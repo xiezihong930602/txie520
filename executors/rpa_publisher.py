@@ -344,8 +344,8 @@ class RpaPublisherExecutor(BaseExecutor):
                 const txt = (el.innerText || el.textContent || '').trim();
                 if (!txt || txt.length > 30) continue;
                 const r = el.getBoundingClientRect();
-                // 只看可见、在弹窗范围内的元素（y>200在创建弹窗内，不是页面其他地方的）
-                if (r.height > 10 && r.height < 50 && r.width > 20 && r.top > 200 && r.top < 800) {
+                // 只看可见、在【创建产品弹窗居中区域】的元素（x>400在弹窗内，不是左侧/顶部菜单；y>300在弹窗内容区，不是顶部导航）
+                if (r.height > 10 && r.height < 50 && r.width > 20 && r.left > 400 && r.top > 300 && r.top < 900) {
                     allVisibleTexts.push({text: txt, x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2)});
                     if (txt === targetText || txt.includes(targetText)) {
                         matches.push({x: r.left + r.width/2, y: r.top + r.height/2, text: txt, tag: el.tagName, class: el.className});
