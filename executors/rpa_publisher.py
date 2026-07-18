@@ -331,39 +331,89 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  ❌ 开面板失败: {e}"); return
         time.sleep(3)  # 足够时间等面板完全渲染
 
-        # 全局搜索文本匹配的可见元素，直接点
-        print(f"[3/4] 全局搜索文本「{shop_name}」的可见元素...")
+        # 先找级联下拉弹出浮层（打开面板后弹出的最上层菜单，只在浮层内搜，不会点到页面其他地方）
+        print(f"[3/4] 查找级联下拉浮层内的「{shop_name}」选项...")
         target_pos = self.page.evaluate("""(targetText) => {
-            const allEls = document.querySelectorAll('*');
-            const matches = [];
-            const allVisibleTexts = [];
-            
-            for (const el of allEls) {
-                // 只看叶子节点（没有子元素的，避免父元素重复匹配）
-                if (el.children.length > 0) continue;
-                const txt = (el.innerText || el.textContent || '').trim();
-                if (!txt || txt.length > 30) continue;
-                const r = el.getBoundingClientRect();
-                // 只看可见、在【创建产品弹窗居中区域】的元素（x>400在弹窗内，不是左侧/顶部菜单；y>300在弹窗内容区，不是顶部导航）
-                if (r.height > 10 && r.height < 50 && r.width > 20 && r.left > 400 && r.top > 300 && r.top < 900) {
-                    allVisibleTexts.push({text: txt, x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2)});
-                    if (txt === targetText || txt.includes(targetText)) {
-                        matches.push({x: r.left + r.width/2, y: r.top + r.height/2, text: txt, tag: el.tagName, class: el.className});
+            // 第一步：优先找cascader下拉浮层（最上层弹出的菜单）
+            const popperSelectors = [
+                '.el-cascader-popper', '.jx-cascader-popper', 
+                '[class*="cascader"][class*="popper"]',
+                '[class*="cascader"][class*="dropdown"]',
+                '[x-placement]' // popper.js生成的浮层都有x-placement属性
+            ];
+            let popper = null;
+            for (const sel of popperSelectors) {
+                const els = Array.from(document.querySelectorAll(sel));
+                for (const el of els) {
+                    const r = el.getBoundingClientRect();
+                    // 可见的浮层：高度>100，z-index高，在最上层
+                    if (r.height > 100 && r.width > 100 && r.top > 100) {
+                        const style = window.getComputedStyle(el);
+                        if (style.position === 'absolute' || style.position === 'fixed') {
+                            popper = el;
+                            break;
+                        }
+                    }
+                }
+                if (popper) break;
+            }
+
+            const searchIn = (container) => {
+                const matches = [];
+                const allEls = container.querySelectorAll('*');
+                for (const el of allEls) {
+                    if (el.children.length > 0) continue;
+                    const txt = (el.innerText || el.textContent || '').trim();
+                    if (!txt || txt.length > 30) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.height > 10 && r.height < 50 && r.width > 20) {
+                        if (txt === targetText || txt.includes(targetText)) {
+                            matches.push({x: r.left + r.width/2, y: r.top + r.height/2, text: txt, tag: el.tagName, class: el.className});
+                        }
+                    }
+                }
+                return matches;
+            };
+
+            // 优先在浮层里搜
+            let matches = [];
+            if (popper) {
+                matches = searchIn(popper);
+            }
+
+            // 浮层里没找到再兜底，严格限制在居中弹窗区域（x:400-1500, y:300-800，排除右侧表格）
+            if (matches.length === 0) {
+                const allEls = document.querySelectorAll('*');
+                for (const el of allEls) {
+                    if (el.children.length > 0) continue;
+                    const txt = (el.innerText || el.textContent || '').trim();
+                    if (!txt || txt.length > 30) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.height > 10 && r.height < 50 && r.width > 20 && 
+                        r.left > 400 && r.left < 1500 && r.top > 300 && r.top < 800) {
+                        if (txt === targetText || txt.includes(targetText)) {
+                            matches.push({x: r.left + r.width/2, y: r.top + r.height/2, text: txt, tag: el.tagName, class: el.className});
+                        }
                     }
                 }
             }
+
+            // 调试输出：浮层是否找到、匹配数量
+            const debugInfo = {
+                popperFound: !!popper,
+                matchCount: matches.length
+            };
             
             if (matches.length > 0) {
-                // 取最靠上的匹配项
                 matches.sort((a,b) => a.y - b.y);
-                return {found: true, pos: matches[0], allMatches: matches.length, allVisibleTexts: allVisibleTexts.slice(0, 30)};
+                return {found: true, pos: matches[0], debug: debugInfo};
             }
-            return {found: false, allVisibleTexts: allVisibleTexts.slice(0, 50)};
+            return {found: false, debug: debugInfo};
         }""", shop_name)
-        print(f"  搜索结果: {json.dumps(target_pos, ensure_ascii=False)[:2000]}")
+        print(f"  搜索结果: {json.dumps(target_pos, ensure_ascii=False)}")
         
         if not target_pos.get('found'):
-            print(f"  ❌ 未找到文本「{shop_name}」，上面是所有可见短文本元素")
+            print(f"  ❌ 未找到文本「{shop_name}」，浮层找到状态：{target_pos.get('debug', {}).get('popperFound')}")
             return
         
         pos = target_pos['pos']
