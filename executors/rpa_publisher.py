@@ -346,8 +346,8 @@ class RpaPublisherExecutor(BaseExecutor):
                 const els = Array.from(document.querySelectorAll(sel));
                 for (const el of els) {
                     const r = el.getBoundingClientRect();
-                    // 可见的浮层：高度>100，z-index高，在最上层
-                    if (r.height > 100 && r.width > 100 && r.top > 100) {
+                    // 可见的cascader浮层：高度>100，位置在弹窗居中区域(x>400，y>200)，排除左侧菜单的tooltip
+                    if (r.height > 100 && r.width > 100 && r.top > 200 && r.left > 400) {
                         const style = window.getComputedStyle(el);
                         if (style.position === 'absolute' || style.position === 'fixed') {
                             popper = el;
