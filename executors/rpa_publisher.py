@@ -333,26 +333,28 @@ class RpaPublisherExecutor(BaseExecutor):
         time.sleep(0.8)
 
         print(f"  [店铺选择-3/3] 勾选checkbox...")
-        # DOM结构: ul.el-cascader-menu__list > li > label > span.el-checkbox__label(text=店铺名)
-        # 需点击同label内的 span.el-checkbox__inner
-        result = self.page.evaluate("""(shop) => {
-            const items = document.querySelectorAll('.el-cascader-menu__item');
-            for (const item of items) {
-                const label = item.querySelector('.el-checkbox__label');
-                if (label && label.innerText.trim() === shop) {
-                    const inner = item.querySelector('.el-checkbox__inner');
-                    if (inner) {
-                        inner.click();
-                        return 'clicked';
-                    }
-                    return 'no_inner';
-                }
-            }
-            return 'not_found';
-        }""", shop_name)
+        result = 'not_tried'
+        # 方式1: Playwright点击label元素
+        try:
+            item = self.page.locator('.el-cascader-menu__item').filter(has_text=shop_name).first
+            cb = item.locator('label').first
+            if cb.count() > 0:
+                cb.click(timeout=3000)
+                result = 'clicked_label'
+        except Exception as e:
+            pass
+        
+        # 方式2: 如果label不行，点击整个li（cascader item）
+        if result != 'clicked_label':
+            try:
+                item = self.page.locator('.el-cascader-menu__item').filter(has_text=shop_name).first
+                item.click(timeout=3000)
+                result = 'clicked_item'
+            except Exception as e:
+                result = f'error: {e}'
         print(f"  结果: {result}")
         
-        if result == 'clicked':
+        if result.startswith('clicked'):
             time.sleep(0.3)
             verify = self.page.evaluate("""() => {
                 const cascader = document.querySelector('.jx-pro-cascader');
