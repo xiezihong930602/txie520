@@ -329,11 +329,11 @@ class RpaPublisherExecutor(BaseExecutor):
             if box:
                 self.page.mouse.click(box['x']+box['width']/2, box['y']+box['height']/2)
                 time.sleep(0.5)
-                # 清空已有内容
-                inp.fill("")
-                time.sleep(0.2)
+                # 全选已有内容（不用fill，因为input是readonly，直接键盘操作）
+                self.page.keyboard.press("Control+A")
+                time.sleep(0.1)
                 # 输入店铺名
-                inp.type(shop_name, delay=100)
+                self.page.keyboard.type(shop_name, delay=100)
         except Exception as e:
             print(f"  ❌ 输入失败: {e}"); return
         time.sleep(2)  # 等搜索结果加载
