@@ -1,0 +1,6 @@
+[
+  {"name": "颜色名称", "type": "text"},
+  {"name": "所属链接", "type": "text"},
+  {"name": "商品主图", "type": "attachment"},
+  {"name": "备注", "type": "text"}
+]

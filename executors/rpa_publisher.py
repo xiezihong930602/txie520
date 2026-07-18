@@ -304,54 +304,56 @@ class RpaPublisherExecutor(BaseExecutor):
         """)
         time.sleep(0.3)
 
-        # 2. 模拟完整鼠标事件（先获取输入框坐标）
-        inp_pos = self.page.evaluate("""() => {
-            const inp = document.querySelector('.jx-pro-cascader input');
-            if (!inp) return null;
-            const r = inp.getBoundingClientRect();
-            return {x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), cx: r.x+r.width/2, cy: r.y+r.height/2};
-        }""")
-        print(f"  [cascader输入框] {inp_pos}")
+        # 2. 点击级联输入框（不滚屏），然后键盘输入
+        self.page.locator('.jx-pro-cascader input').first.click(force=True, no_wait_after=True)
+        time.sleep(0.5)
 
-        if inp_pos:
-            # 用 page.mouse.click 点输入框中心
-            self.page.mouse.click(inp_pos['cx'], inp_pos['cy'])
-        time.sleep(0.8)
+        # 强制聚焦 + 清空，确保键盘输入进到级联搜索框
+        self.page.evaluate("""(name) => {
+            const inp = document.querySelector('.jx-pro-cascader input');
+            if (inp) {
+                inp.focus();
+                inp.value = '';
+                inp.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+        }""", shop_name)
+        time.sleep(0.3)
 
         # 3. 键盘输入过滤
         self.page.keyboard.type(shop_name, delay=60)
         time.sleep(1.5)
 
-        # 4. 获取 checkbox 坐标，用鼠标精确点击
-        click_info = self.page.evaluate("""(name) => {
-            const visible_nodes = [];
+        # 4. 暴力点击节点内所有可点元素
+        result = self.page.evaluate("""(name) => {
             const nodes = document.querySelectorAll('.el-cascader-node');
             for (const nd of nodes) {
-                const r = nd.getBoundingClientRect();
                 const lb = nd.querySelector('.el-cascader-node__label');
-                const txt = (lb?.innerText||'').trim();
-                visible_nodes.push({text: txt.substring(0,20), x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height)});
-                if (txt.includes(name)) {
-                    const cb = nd.querySelector('input[type="checkbox"]');
-                    let cbPos = null;
-                    if (cb) {
-                        const cr = cb.getBoundingClientRect();
-                        cbPos = {x: cr.left + cr.width/2, y: cr.top + cr.height/2, vis: cr.width > 0};
-                    }
-                    return JSON.stringify({found: true, cbPos, nodeRect: {x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height)}});
+                if (!lb || !(lb.innerText||'').includes(name)) continue;
+                
+                // 点整个node
+                nd.click();
+                nd.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+                // 点label
+                lb.click();
+                lb.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+                // 点checkbox
+                const cb = nd.querySelector('input[type="checkbox"]');
+                if (cb) {
+                    cb.click();
+                    cb.dispatchEvent(new MouseEvent('click', {bubbles:true}));
                 }
+                // 点checkbox的可见替代元素(el-checkbox__inner)
+                const inner = nd.querySelector('.el-checkbox__inner');
+                if (inner) {
+                    inner.click();
+                    inner.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+                }
+                return 'bruteforce_done';
             }
-            return JSON.stringify({found: false, visibleCount: visible_nodes.filter(n=>n.h>0).length, allNodes: visible_nodes});
+            return 'not_found';
         }""", shop_name)
-        print(f"  [点击诊断] {click_info}")
-        
-        import json as _json
-        info = _json.loads(click_info)
-        if info.get('found') and info.get('cbPos') and info['cbPos']['vis']:
-            self.page.mouse.click(info['cbPos']['x'], info['cbPos']['y'])
-            result = "mouse_clicked"
-        else:
-            result = "cb_not_visible"
+        print(f"  [店铺选择] {result}")
+        time.sleep(0.5)
         print(f"  [店铺选择] {result}")
         time.sleep(0.3)
 

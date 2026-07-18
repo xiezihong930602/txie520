@@ -1,0 +1,15 @@
+[
+  {"name": "链接编号", "type": "text"},
+  {"name": "产品标题", "type": "text"},
+  {"name": "SKU件数", "type": "number"},
+  {"name": "上架状态", "type": "select", "options": [
+    {"name": "待上架"},
+    {"name": "上架中"},
+    {"name": "已上架"},
+    {"name": "上架失败"}
+  ]},
+  {"name": "SKC ID", "type": "text"},
+  {"name": "错误信息", "type": "text"},
+  {"name": "创建时间", "type": "date"},
+  {"name": "备注", "type": "text"}
+]

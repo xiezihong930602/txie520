@@ -1,0 +1,5 @@
+[
+  {"name": "模板名称", "type": "text"},
+  {"name": "对应类目", "type": "text"},
+  {"name": "备注", "type": "text"}
+]

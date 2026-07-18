@@ -1,0 +1,6 @@
+[
+  {"name": "店铺名称", "type": "text"},
+  {"name": "平台", "type": "text"},
+  {"name": "店铺ID", "type": "text"},
+  {"name": "备注", "type": "text"}
+]

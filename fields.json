@@ -1,0 +1,17 @@
+[
+  {"type": "text", "name": "商品编号"},
+  {"type": "text", "name": "款式名称"},
+  {"type": "select", "name": "分类", "options": [{"name": "儿童"}, {"name": "成人"}]},
+  {"type": "text", "name": "模板名称"},
+  {"type": "text", "name": "产品标题"},
+  {"type": "number", "name": "成本价"},
+  {"type": "number", "name": "供货价"},
+  {"type": "text", "name": "尺码列表"},
+  {"type": "text", "name": "SKU分类"},
+  {"type": "text", "name": "颜色名称"},
+  {"type": "attachment", "name": "商品主图"},
+  {"type": "select", "name": "上架状态", "options": [{"name": "待上架"}, {"name": "上架中"}, {"name": "已上架"}, {"name": "上架失败"}]},
+  {"type": "text", "name": "SKC ID"},
+  {"type": "text", "name": "错误信息"},
+  {"type": "text", "name": "备注"}
+]
