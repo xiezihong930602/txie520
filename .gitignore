@@ -1,8 +1,25 @@
+# 浏览器/驱动
 browser_data/
 browser_drivers/
 chrome_rpa/
-*.json
-!package.json
+
+# 认证信息
+storage_state.json
+feishu_token.json
+
+# 日志和截图
+debug*.png
+error*.png
+debug.log
+
+# Python
 __pycache__/
 *.pyc
+
+# 系统
 .DS_Store
+Thumbs.db
+
+# 临时
+tmp*
+python
