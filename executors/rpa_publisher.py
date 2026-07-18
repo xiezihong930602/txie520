@@ -304,24 +304,20 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 打开面板 → 勾选checkbox"""
+        """选择店铺：删tag → 打开面板 → 点checkbox"""
         print(f"  [店铺选择-1/3] 删除默认tag...")
-        # 1. 删除默认tag
         self.page.evaluate("""() => {
-            const closeBtns = document.querySelectorAll('.jx-tag__close, .el-tag__close, [class*="tag"] [class*="close"]');
-            for (const btn of closeBtns) {
-                const rect = btn.getBoundingClientRect();
-                if (rect.width > 5 && rect.height > 5 && rect.width < 30 && rect.top < 200) {
-                    btn.click();
-                    return 'deleted';
+            const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
+            for (const btn of btns) {
+                const r = btn.getBoundingClientRect();
+                if (r.width > 5 && r.height > 5 && r.width < 30 && r.top < 200) {
+                    btn.click(); return;
                 }
             }
-            return 'no_tag';
         }""")
         time.sleep(0.3)
 
         print(f"  [店铺选择-2/3] 打开级联面板...")
-        # 2. 打开面板
         self.page.evaluate("""() => {
             const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, [role="dialog"]');
             for (const dlg of dlgs) {
@@ -329,117 +325,41 @@ class RpaPublisherExecutor(BaseExecutor):
                 const inputs = dlg.querySelectorAll('input:not([type="hidden"]):not([disabled])');
                 for (const inp of inputs) {
                     if ((inp.placeholder||'').includes('请选择或输入搜索')) {
-                        inp.click();
-                        return 'clicked';
+                        inp.click(); return;
                     }
                 }
             }
-            return 'no_input';
         }""")
         time.sleep(0.8)
 
-        # 诊断：dump面板内部完整HTML
-        panel_html = self.page.evaluate("""() => {
-            const menus = document.querySelectorAll('.el-cascader-menu, [class*="cascader-menu"], .el-cascader-panel, [class*="popper"]');
-            for (const m of menus) {
-                const rect = m.getBoundingClientRect();
-                if (rect.width > 50 && rect.height > 50 && rect.top > 50) {
-                    return m.outerHTML.substring(0, 3000);
-                }
-            }
-            // 兜底：找所有可见且有内容的浮层
-            const all = document.querySelectorAll('[class*="popper"], [class*="dropdown"], [class*="menu"]');
-            for (const el of all) {
-                const rect = el.getBoundingClientRect();
-                if (rect.width > 100 && rect.height > 50 && el.innerText.includes('Noble')) {
-                    return el.outerHTML.substring(0, 3000);
-                }
-            }
-            return 'no_panel_html';
-        }""")
-        print(f"  [面板HTML] {panel_html[:2000]}")
-
-        print(f"  [店铺选择-3/3] 展开L2+勾选Noble Boys...")
-        # 3. 点击"店铺"展开L2 → 勾选Noble Boys的checkbox
-        result = self.page.evaluate("""() => {
-            // 先找级联面板
-            const menus = document.querySelectorAll('.el-cascader-menu, [class*="cascader-menu"]');
-            let l1Menu = null;
-            for (const m of menus) {
-                const rect = m.getBoundingClientRect();
-                if (rect.width > 50 && rect.height > 50) {
-                    l1Menu = m;
-                    break;
-                }
-            }
-            if (!l1Menu) return 'no_panel';
-            
-            // 在L1中找"店铺"并点击展开L2
-            const l1Nodes = l1Menu.querySelectorAll('.el-cascader-node');
-            let clicked = false;
-            for (const node of l1Nodes) {
-                const label = node.querySelector('.el-cascader-node__label');
-                if (label && label.innerText.trim() === '店铺' && !node.classList.contains('is-disabled')) {
-                    label.click();
-                    clicked = true;
-                    break;
-                }
-            }
-            if (!clicked) return 'no_shop_l1';
-            
-            // 等L2渲染(200ms)
-            return 'expanded';
-        }""")
-        time.sleep(1.0)
-        print(f"  L1展开: {result}")
-        
-        # 4. 在L2找到Noble Boys, 点击左边小方块
-        result2 = self.page.evaluate("""() => {
-            const menus = document.querySelectorAll('.el-cascader-menu, [class*="cascader-menu"]');
-            for (const m of menus) {
-                const rect = m.getBoundingClientRect();
-                if (rect.width > 50 && rect.height > 50) {
-                    const nodes = m.querySelectorAll('.el-cascader-node');
-                    for (const node of nodes) {
-                        const label = node.querySelector('.el-cascader-node__label');
-                        if (label && label.innerText.trim() === 'Noble Boys') {
-                            // 找原始checkbox input
-                            const input = node.querySelector('input[type="checkbox"]');
-                            if (input) {
-                                return {found: true, hasInput: true, checked: input.checked};
-                            }
-                            return {found: true, noInput: true};
-                        }
+        print(f"  [店铺选择-3/3] 勾选checkbox...")
+        # DOM结构: ul.el-cascader-menu__list > li > label > span.el-checkbox__label(text=店铺名)
+        # 需点击同label内的 span.el-checkbox__inner
+        result = self.page.evaluate("""(shop) => {
+            const items = document.querySelectorAll('.el-cascader-menu__item');
+            for (const item of items) {
+                const label = item.querySelector('.el-checkbox__label');
+                if (label && label.innerText.trim() === shop) {
+                    const inner = item.querySelector('.el-checkbox__inner');
+                    if (inner) {
+                        inner.click();
+                        return 'clicked';
                     }
+                    return 'no_inner';
                 }
             }
-            return {found: false};
-        }""")
-        print(f"  Noble Boys: {json.dumps(result2, ensure_ascii=False)}")
-
+            return 'not_found';
+        }""", shop_name)
+        print(f"  结果: {result}")
         
-        if result2.get('found') and result2.get('hasInput'):
-            # 用 locator 找 Noble Boys 节点内的 checkbox input
-            nb_node = self.page.locator('.el-cascader-node', has_text='Noble Boys').first
-            cb_input = nb_node.locator('input[type="checkbox"]')
-            if cb_input.count() > 0:
-                cb_input.first.click(force=True)
-                print(f"  已点击 checkbox input (force=True)")
-            else:
-                # 兜底：点击 .el-checkbox__inner
-                inner = nb_node.locator('.el-checkbox__inner')
-                if inner.count() > 0:
-                    inner.first.click(force=True)
-                    print(f"  已点击 .el-checkbox__inner (force=True)")
-            time.sleep(0.5)
-            
-            # 再验证：Vue value是否正确
+        if result == 'clicked':
+            time.sleep(0.3)
             verify = self.page.evaluate("""() => {
                 const cascader = document.querySelector('.jx-pro-cascader');
                 if (!cascader) return 'no_cascader';
                 let el = cascader, vue = null;
                 for (let i = 0; i < 10; i++) {
-                    vue = el.__vue__ || (el._vnode?.component?.proxy);
+                    vue = el.__vue__;
                     if (vue) break;
                     el = el.parentElement;
                     if (!el) break;
