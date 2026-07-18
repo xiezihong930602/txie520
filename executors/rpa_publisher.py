@@ -288,27 +288,51 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删除默认tag → 鼠标点击打开面板 → 键盘输入 → 点击节点"""
-        # 1. 删除默认tag（必须保留，不同链接可能不同店铺）
-        self.page.evaluate("""
-            () => {
-                const closeBtns = document.querySelectorAll('.jx-tag__close, .el-tag__close, [class*="tag"] [class*="close"]');
-                for (const btn of closeBtns) {
-                    const rect = btn.getBoundingClientRect();
-                    if (rect.width > 5 && rect.height > 5 && rect.width < 30 && rect.top < 200) {
-                        btn.click();
-                        return;
-                    }
+        """选择店铺：先检查是否已选中，未选中才删tag重选"""
+        # 1. 检查当前是否已选中目标店铺
+        current = self.page.evaluate("""() => {
+            const cascader = document.querySelector('.jx-pro-cascader');
+            if (!cascader) return null;
+            let el = cascader, vue = null;
+            for (let i = 0; i < 10; i++) {
+                vue = el.__vue__ || (el._vnode?.component?.proxy);
+                if (vue) break;
+                el = el.parentElement;
+                if (!el) break;
+            }
+            if (!vue) return null;
+            // 检查 inputValue 和 presentTags
+            const tagText = (cascader.innerText||'').trim();
+            return {
+                value: vue.value,
+                inputValue: vue.inputValue,
+                tagText: tagText.substring(0, 40)
+            };
+        }""")
+        print(f"  [店铺当前] {current}")
+        
+        # 如果已经有tag且包含目标店铺名，直接跳过
+        if current and current['tagText'] and shop_name in current['tagText']:
+            print(f"  店铺已是 {shop_name}，跳过")
+            return
+        
+        # 2. 删除默认tag
+        self.page.evaluate("""() => {
+            const closeBtns = document.querySelectorAll('.jx-tag__close, .el-tag__close, [class*="tag"] [class*="close"]');
+            for (const btn of closeBtns) {
+                const rect = btn.getBoundingClientRect();
+                if (rect.width > 5 && rect.height > 5 && rect.width < 30 && rect.top < 200) {
+                    btn.click();
+                    return;
                 }
             }
-        """)
+        }""")
         time.sleep(0.3)
 
-        # 2. 直接填值触发搜索 + 打开面板
+        # 3. 直接填值触发搜索 + 打开面板
         self.page.evaluate("""(name) => {
             const inp = document.querySelector('.jx-pro-cascader input');
             if (!inp) return;
-            // 获取Vue实例触发面板
             const cascader = document.querySelector('.jx-pro-cascader');
             let vue = null, el = cascader;
             for (let i = 0; i < 10; i++) {
@@ -317,43 +341,29 @@ class RpaPublisherExecutor(BaseExecutor):
                 el = el.parentElement;
                 if (!el) break;
             }
-            // 设值并触发搜索
             inp.value = name;
             inp.dispatchEvent(new Event('input', {bubbles: true}));
             inp.dispatchEvent(new Event('change', {bubbles: true}));
-            inp.dispatchEvent(new Event('compositionend', {bubbles: true}));
-            // 如果Vue实例有 handleQueryChange 调用之
             if (vue && typeof vue.handleQueryChange === 'function') {
                 vue.handleQueryChange(name);
             }
         }""", shop_name)
         time.sleep(1.5)
 
-        # 4. 暴力点击节点内所有可点元素
+        # 4. 暴力点击节点
         result = self.page.evaluate("""(name) => {
             const nodes = document.querySelectorAll('.el-cascader-node');
             for (const nd of nodes) {
                 const lb = nd.querySelector('.el-cascader-node__label');
                 if (!lb || !(lb.innerText||'').includes(name)) continue;
-                
-                // 点整个node
                 nd.click();
                 nd.dispatchEvent(new MouseEvent('click', {bubbles:true}));
-                // 点label
                 lb.click();
                 lb.dispatchEvent(new MouseEvent('click', {bubbles:true}));
-                // 点checkbox
                 const cb = nd.querySelector('input[type="checkbox"]');
-                if (cb) {
-                    cb.click();
-                    cb.dispatchEvent(new MouseEvent('click', {bubbles:true}));
-                }
-                // 点checkbox的可见替代元素(el-checkbox__inner)
+                if (cb) { cb.click(); cb.dispatchEvent(new MouseEvent('click', {bubbles:true})); }
                 const inner = nd.querySelector('.el-checkbox__inner');
-                if (inner) {
-                    inner.click();
-                    inner.dispatchEvent(new MouseEvent('click', {bubbles:true}));
-                }
+                if (inner) { inner.click(); inner.dispatchEvent(new MouseEvent('click', {bubbles:true})); }
                 return 'bruteforce_done';
             }
             return 'not_found';
