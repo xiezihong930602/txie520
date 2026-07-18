@@ -304,7 +304,7 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 点input → 鼠标移动到checkbox点击"""
+        """选择店铺：删tag → 开面板 → dump节点 + 调handleCheckChange"""
         print(f"  [店铺选择-1/3] 删除默认tag...")
         self.page.evaluate("""() => {
             const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
@@ -317,63 +317,59 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        print(f"  [店铺选择-2/3] 点击input开面板...")
+        print(f"  [店铺选择-2/3] 开面板...")
         try:
             inp = self.page.locator('.jx-dialog input[placeholder*="请选择或输入搜索"]').first
             if inp.count() == 0:
                 inp = self.page.locator('[role="dialog"] input[placeholder*="请选择或输入搜索"]').first
-            # 获取input的bounding box
             box = inp.bounding_box()
             if box:
-                # 鼠标移动到input并点击
-                self.page.mouse.click(box['x'] + box['width']/2, box['y'] + box['height']/2)
+                self.page.mouse.click(box['x']+box['width']/2, box['y']+box['height']/2)
         except Exception as e:
-            print(f"  打开失败: {e}"); return
+            print(f"  失败: {e}"); return
         time.sleep(1.0)
 
-        print(f"  [店铺选择-3/3] 找checkbox位置并鼠标点击...")
-        # 用JS获取Noble Boys的checkbox小方块坐标
-        pos = self.page.evaluate("""(shop) => {
-            // 搜索所有可能的父容器
-            const containers = document.querySelectorAll('.el-cascader-panel, .el-cascader-menu, .el-cascader__dropdown, [class*="cascader"][class*="popper"], .el-popper');
-            for (const c of containers) {
-                const rect = c.getBoundingClientRect();
-                if (rect.width < 100 || rect.height < 50) continue;
-                const items = c.querySelectorAll('.el-cascader-menu__item, [class*="menu__item"]');
-                for (const item of items) {
-                    const label = item.querySelector('.el-checkbox__label');
-                    if (label && label.innerText.trim() === shop) {
-                        const inner = item.querySelector('.el-checkbox__inner');
-                        if (inner) {
-                            const r = inner.getBoundingClientRect();
-                            return {x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2)};
-                        }
-                    }
-                }
+        print(f"  [店铺选择-3/3] dump options + handleCheckChange...")
+        result = self.page.evaluate("""(shopId) => {
+            const cascader = document.querySelector('.jx-pro-cascader');
+            if (!cascader) return 'no_cascader';
+            let vue = cascader.__vue__;
+            if (!vue) {
+                let el = cascader;
+                for (let i=0;i<10&&!vue;i++){vue=el.__vue__;el=el.parentElement;if(!el)break;}
             }
-            // 兜底：搜索整个页面
-            const allItems = document.querySelectorAll('.el-cascader-menu__item');
-            for (const item of allItems) {
-                const label = item.querySelector('.el-checkbox__label');
-                if (label && label.innerText.trim() === shop) {
-                    const inner = item.querySelector('.el-checkbox__inner');
-                    if (inner) {
-                        const r = inner.getBoundingClientRect();
-                        return {x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2)};
-                    }
+            if (!vue) return 'no_vue';
+            
+            // dump options结构
+            const opts = vue.options || [];
+            const dump = opts.map(o => ({
+                value: o.value, label: o.label,
+                hasChildren: !!o.children,
+                childCount: o.children ? (Array.isArray(o.children)?o.children.length:Object.keys(o.children).length) : 0,
+                firstChild: o.children && o.children.length > 0 ? o.children[0].value : null
+            }));
+            
+            // 找匹配shopId的节点
+            let node = null;
+            const search = (arr) => {
+                if (!arr || node) return;
+                for (const n of arr) {
+                    if (String(n.value) === shopId || n.value === shopId) { node = n; return; }
+                    if (n.children) search(Array.isArray(n.children)?n.children:Object.values(n.children));
                 }
+            };
+            search(opts);
+            if (!node && vue.checkedNodes) search(vue.checkedNodes);
+            
+            // 找到就调handleCheckChange
+            if (node && typeof vue.handleCheckChange === 'function') {
+                vue.handleCheckChange(node, true);
+                return {action:'handleCheckChange', value: vue.value, checked: vue.checkedValue, options: dump};
             }
-            return null;
-        }""", shop_name)
-        print(f"  checkbox坐标: {pos}")
-        
-        if pos:
-            self.page.mouse.click(pos['x'], pos['y'])
-            time.sleep(0.5)
-            result = 'mouse_clicked'
-        else:
-            result = 'pos_not_found'
-        print(f"  结果: {result}")
+            
+            return {action:'no_node', options: dump, checkedNodes: vue.checkedNodes ? vue.checkedNodes.length : 0};
+        }""", '14255039')
+        print(f"  结果: {json.dumps(result, ensure_ascii=False)[:2000]}")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
