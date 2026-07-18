@@ -295,77 +295,8 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 打开面板 → 点L1"店铺" → 勾选L2店铺"""
-        # 1. 删除默认tag
-        self.page.evaluate("""() => {
-            const closeBtns = document.querySelectorAll('.jx-tag__close, .el-tag__close, [class*="tag"] [class*="close"]');
-            for (const btn of closeBtns) {
-                const rect = btn.getBoundingClientRect();
-                if (rect.width > 5 && rect.height > 5 && rect.width < 30 && rect.top < 200) {
-                    btn.click();
-                    return;
-                }
-            }
-        }""")
-        time.sleep(0.3)
-
-        # 2. 扫描弹窗找输入框点击（已验证能打开面板）
-        clicked = self.page.evaluate("""() => {
-            const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, [role="dialog"]');
-            for (const dlg of dlgs) {
-                if (dlg.getBoundingClientRect().height < 100) continue;
-                const inputs = dlg.querySelectorAll('input:not([type="hidden"]):not([disabled])');
-                for (const inp of inputs) {
-                    const ph = inp.placeholder || '';
-                    if (ph.includes('搜索') || ph.includes('请选择或输入')) {
-                        inp.click();
-                        return 'clicked';
-                    }
-                }
-            }
-            return 'not_found';
-        }""")
-        print(f"  [打开面板] {clicked}")
-        if clicked == 'not_found':
-            return
-        time.sleep(0.8)
-
-        # 3. 获取 label 坐标，用 page.mouse 模拟真实用户点击
-        pos = self.page.evaluate("""(name) => {
-            const nodes = document.querySelectorAll('.el-cascader-node');
-            for (const nd of nodes) {
-                const lb = nd.querySelector('.el-cascader-node__label');
-                if (lb && (lb.innerText||'').trim().includes(name)) {
-                    const r = lb.getBoundingClientRect();
-                    return {x: r.left + r.width/2, y: r.top + r.height/2};
-                }
-            }
-            return null;
-        }""", shop_name)
-
-        if pos:
-            self.page.mouse.move(pos['x'], pos['y'])
-            time.sleep(0.2)
-            self.page.mouse.click(pos['x'], pos['y'])
-            result = f"mouse_click({pos['x']:.0f},{pos['y']:.0f})"
-        else:
-            result = "not_found"
-        print(f"  [店铺选择] {result}")
-        time.sleep(0.5)
-
-        # 面板关闭后 Enter 确认
-        self.page.keyboard.press("Enter")
-        time.sleep(0.3)
-
-        # 触发事件确保tag渲染
-        self.page.evaluate("""() => {
-            const inp = document.querySelector('.jx-pro-cascader input');
-            if (inp) {
-                inp.dispatchEvent(new Event('change', {bubbles: true}));
-                inp.dispatchEvent(new Event('blur', {bubbles: true}));
-            }
-        }""")
-        print(f"  店铺选择: {shop_name}")
+        """选择店铺：跳过选择，模板已默认 Noble Boys"""
+        print(f"  店铺选择: {shop_name} (模板默认，跳过)")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
