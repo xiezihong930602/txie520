@@ -305,37 +305,24 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        # 2. Vue API 打开面板 + 锁定滚动 + 拦截滚屏事件
-        opened = self.page.evaluate("""() => {
-            // 锁定CSS滚动
-            document.body.style.overflow = 'hidden';
-            document.documentElement.style.overflow = 'hidden';
-            const dlg = document.querySelector('.jx-dialog, .el-dialog');
-            if (dlg) { dlg.style.overflow = 'hidden'; dlg.style.maxHeight = '100vh'; }
-            
-            // 拦截所有scroll事件（阻止Vue组件主动滚屏）
-            const preventScroll = (e) => { e.stopPropagation(); };
-            window.addEventListener('scroll', preventScroll, {passive: false, capture: true});
-            
-            const cascader = document.querySelector('.jx-pro-cascader');
-            if (!cascader) return 'no_cascader';
-            let el = cascader, vue = null;
-            for (let i = 0; i < 10; i++) {
-                vue = el.__vue__ || (el._vnode?.component?.proxy);
-                if (vue) break;
-                el = el.parentElement;
-                if (!el) break;
+        # 2. 扫描弹窗找输入框点击（已验证能打开面板）
+        clicked = self.page.evaluate("""() => {
+            const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, [role="dialog"]');
+            for (const dlg of dlgs) {
+                if (dlg.getBoundingClientRect().height < 100) continue;
+                const inputs = dlg.querySelectorAll('input:not([type="hidden"]):not([disabled])');
+                for (const inp of inputs) {
+                    const ph = inp.placeholder || '';
+                    if (ph.includes('搜索') || ph.includes('请选择或输入')) {
+                        inp.click();
+                        return 'clicked';
+                    }
+                }
             }
-            if (!vue) return 'no_vue';
-            if (typeof vue.toggleDropDownVisible === 'function') {
-                vue.toggleDropDownVisible();
-                return 'opened';
-            }
-            vue.dropDownVisible = true;
-            return 'force_visible';
+            return 'not_found';
         }""")
-        print(f"  [打开面板] {opened}")
-        if opened == 'no_cascader' or opened == 'no_vue':
+        print(f"  [打开面板] {clicked}")
+        if clicked == 'not_found':
             return
         time.sleep(0.8)
 
