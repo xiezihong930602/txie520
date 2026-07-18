@@ -333,47 +333,58 @@ class RpaPublisherExecutor(BaseExecutor):
         time.sleep(0.8)
 
         print(f"  [店铺选择-3/3] 设Vue值 + 触发面板选择...")
-        # 通过组件内部方法 handleCheck 触发选择
+        # 通过组件方法 handleCheckChange 触发选择
         result = self.page.evaluate("""(shopId) => {
             const cascader = document.querySelector('.jx-pro-cascader');
             if (!cascader) return 'no_cascader';
-            
-            // 直接获取组件实例（Vue 2）
             let vue = cascader.__vue__;
             if (!vue) {
                 let el = cascader;
-                for (let i = 0; i < 10; i++) {
+                for (let i = 0; i < 10 && !vue; i++) {
                     vue = el.__vue__;
-                    if (vue) break;
                     el = el.parentElement;
                     if (!el) break;
                 }
             }
             if (!vue) return 'no_vue';
             
-            // 找面板里的checkbox input并触发原生点击
-            const inputs = document.querySelectorAll('.el-cascader-menu__item input[type="checkbox"]');
-            for (const inp of inputs) {
-                if (inp.value === shopId) {
-                    // 模拟完整的鼠标点击事件链
-                    inp.focus();
-                    const rect = inp.getBoundingClientRect();
-                    ['mousedown', 'mouseup', 'click'].forEach(type => {
-                        inp.dispatchEvent(new MouseEvent(type, {
-                            bubbles: true, cancelable: true,
-                            clientX: rect.left + 5, clientY: rect.top + 5
-                        }));
-                    });
-                    return 'events_dispatched';
+            // 从 vue.checkedNodes / vue.options / vue.menus 中找到Noble Boys节点
+            const findNode = (nodes) => {
+                if (!nodes) return null;
+                for (const n of nodes) {
+                    if (String(n.value) === shopId || n.value === shopId) return n;
+                    if (n.children) {
+                        const found = findNode(n.children);
+                        if (found) return found;
+                    }
+                }
+                return null;
+            };
+            
+            let node = findNode(vue.options) || findNode(vue.cachedOptions) || findNode(vue.checkedNodes);
+            
+            // 如果options里没有（可能是懒加载），从DOM面板里直接取value
+            if (!node) {
+                const inputs = document.querySelectorAll('.el-cascader-menu__item input[type="checkbox"]');
+                for (const inp of inputs) {
+                    if (inp.value === shopId) {
+                        // 构造一个简单节点
+                        const label = inp.closest('label')?.querySelector('.el-checkbox__label')?.innerText?.trim();
+                        node = { value: shopId, label: label || shopId, checked: false };
+                        break;
+                    }
                 }
             }
             
-            // 兜底：尝试调用组件方法
-            const methods = Object.keys(vue).filter(k => 
-                typeof vue[k] === 'function' && 
-                (k.includes('check') || k.includes('Check') || k.includes('select'))
-            );
-            return {methods, value: vue.value};
+            if (!node) return 'no_node';
+            
+            // 调用组件内部方法勾选
+            if (typeof vue.handleCheckChange === 'function') {
+                vue.handleCheckChange(node, true);
+                return 'handleCheckChange_called';
+            }
+            
+            return 'no_handleCheckChange';
         }""", '14255039')
         print(f"  结果: {json.dumps(result, ensure_ascii=False)}")
     
