@@ -42,6 +42,7 @@ class RpaPublisherExecutor(BaseExecutor):
         try:
             self._init_browser()
             self._open_create_page()
+            self._apply_template(product.template_name)
             self._select_shop("Noble Boys")
             print("测试完成，30秒后自动关闭...")
             time.sleep(30)
@@ -290,8 +291,8 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 扫描弹窗找input → JS点击 → 键盘打字 → 点结果"""
-        # 1. 无脑删除默认tag
+        """选择店铺：删tag → 打开面板 → 点L1"店铺" → 勾选L2店铺"""
+        # 1. 删除默认tag
         self.page.evaluate("""() => {
             const closeBtns = document.querySelectorAll('.jx-tag__close, .el-tag__close, [class*="tag"] [class*="close"]');
             for (const btn of closeBtns) {
@@ -304,9 +305,9 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        # 2. 扫描弹窗内所有input，找店铺相关的（label=店铺 或 placeholder含搜索）
+        # 2. 点击打开级联面板
         clicked = self.page.evaluate("""() => {
-            const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, .jx-overlay-dialog, [role="dialog"]');
+            const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, [role="dialog"]');
             for (const dlg of dlgs) {
                 if (dlg.getBoundingClientRect().height < 100) continue;
                 const inputs = dlg.querySelectorAll('input:not([type="hidden"]):not([disabled])');
@@ -321,54 +322,46 @@ class RpaPublisherExecutor(BaseExecutor):
             }
             return 'not_found';
         }""")
-        print(f"  [点击输入框] {clicked}")
+        print(f"  [打开面板] {clicked}")
         if clicked == 'not_found':
             return
         time.sleep(0.5)
 
-        # 3. 只设Vue inputValue + 调handleInput（不碰DOM，避免Vue重置）
-        self.page.evaluate("""(name) => {
-            const cascader = document.querySelector('.jx-pro-cascader');
-            if (!cascader) return;
-            let el = cascader, vue = null;
-            for (let i = 0; i < 10; i++) {
-                vue = el.__vue__ || (el._vnode?.component?.proxy);
-                if (vue) break;
-                el = el.parentElement;
-                if (!el) break;
-            }
-            if (!vue) return;
-            // 只改Vue状态，不碰DOM
-            vue.inputValue = name;
-            // Vue.nextTick + handleQueryChange 触发过滤
-            if (typeof vue.handleQueryChange === 'function') {
-                vue.handleQueryChange(name);
-            }
-            if (typeof vue.filterHandler === 'function') {
-                vue.filterHandler(name);
-            }
-            // 强制更新DOM
-            if (typeof vue.$forceUpdate === 'function') {
-                vue.$forceUpdate();
-            }
-        }""", shop_name)
-        time.sleep(1.5)
-
-        # 4. 点击下拉中出现的店铺名
-        result = self.page.evaluate("""(name) => {
+        # 3. 点击"店铺"展开子级
+        l1 = self.page.evaluate("""() => {
             const nodes = document.querySelectorAll('.el-cascader-node');
             for (const nd of nodes) {
                 const lb = nd.querySelector('.el-cascader-node__label');
-                if (lb && (lb.innerText||'').trim().includes(name)) {
+                if (lb && (lb.innerText||'').trim() === '店铺') {
                     lb.click();
                     return 'clicked';
                 }
             }
             return 'not_found';
+        }""")
+        print(f"  [L1-店铺] {l1}")
+        time.sleep(1)
+
+        # 4. 勾选 Noble Boys
+        l2 = self.page.evaluate("""(name) => {
+            const nodes = document.querySelectorAll('.el-cascader-node');
+            for (const nd of nodes) {
+                const lb = nd.querySelector('.el-cascader-node__label');
+                if (lb && (lb.innerText||'').trim().includes(name)) {
+                    // 点checkbox
+                    const cb = nd.querySelector('input[type="checkbox"]');
+                    if (cb) { cb.click(); return 'cb_clicked'; }
+                    // 兜底：点label
+                    lb.click();
+                    return 'label_clicked';
+                }
+            }
+            return 'not_found';
         }""", shop_name)
-        print(f"  [店铺选择] {result}")
-        if result == 'not_found':
-            print(f"  警告: 未在下拉中找到 {shop_name}")
+        print(f"  [店铺选择] {l2}")
+        
+        if l2 == 'not_found':
+            print(f"  警告: 未找到 {shop_name}")
         print(f"  店铺选择: {shop_name}")
     
     def _apply_template(self, template_name: str):
