@@ -305,8 +305,18 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        # 2. Vue API 打开面板（不点击DOM，不聚焦，0滚屏）
+        # 2. Vue API 打开面板 + 锁定滚动 + 拦截滚屏事件
         opened = self.page.evaluate("""() => {
+            // 锁定CSS滚动
+            document.body.style.overflow = 'hidden';
+            document.documentElement.style.overflow = 'hidden';
+            const dlg = document.querySelector('.jx-dialog, .el-dialog');
+            if (dlg) { dlg.style.overflow = 'hidden'; dlg.style.maxHeight = '100vh'; }
+            
+            // 拦截所有scroll事件（阻止Vue组件主动滚屏）
+            const preventScroll = (e) => { e.stopPropagation(); };
+            window.addEventListener('scroll', preventScroll, {passive: false, capture: true});
+            
             const cascader = document.querySelector('.jx-pro-cascader');
             if (!cascader) return 'no_cascader';
             let el = cascader, vue = null;
@@ -317,12 +327,10 @@ class RpaPublisherExecutor(BaseExecutor):
                 if (!el) break;
             }
             if (!vue) return 'no_vue';
-            // 直接调toggle方法，不触发任何DOM事件
             if (typeof vue.toggleDropDownVisible === 'function') {
                 vue.toggleDropDownVisible();
                 return 'opened';
             }
-            // 兜底：直接设visible
             vue.dropDownVisible = true;
             return 'force_visible';
         }""")
