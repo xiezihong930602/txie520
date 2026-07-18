@@ -304,15 +304,11 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        # 2. 纯JS操作级联器：dispatch click → focus → set value → trigger search
+        # 2. Vue API 直接操作：打开面板 + 设值 + 触发过滤
         result = self.page.evaluate("""(name) => {
             const cascader = document.querySelector('.jx-pro-cascader');
             if (!cascader) return 'no_cascader';
             
-            const inp = cascader.querySelector('input');
-            if (!inp) return 'no_input';
-            
-            // 获取Vue实例
             let el = cascader, vue = null;
             for (let i = 0; i < 10; i++) {
                 vue = el.__vue__ || (el._vnode?.component?.proxy);
@@ -320,28 +316,25 @@ class RpaPublisherExecutor(BaseExecutor):
                 el = el.parentElement;
                 if (!el) break;
             }
+            if (!vue) return 'no_vue';
             
-            // 1) click事件触发面板打开
-            cascader.dispatchEvent(new MouseEvent('click', {bubbles:true}));
-            cascader.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+            // 直接操作Vue状态
+            vue.dropDownVisible = true;
+            vue.inputValue = name;
+            vue.filtering = true;
             
-            // 2) 聚焦输入框（禁止滚屏）
-            inp.focus({preventScroll: true});
+            // 调用过滤方法
+            if (typeof vue.filterHandler === 'function') vue.filterHandler(name);
+            if (typeof vue.handleQueryChange === 'function') vue.handleQueryChange(name);
             
-            // 3) 设置值并触发搜索
-            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-            nativeSetter.call(inp, name);
-            inp.dispatchEvent(new Event('input', {bubbles: true}));
-            inp.dispatchEvent(new Event('change', {bubbles: true}));
-            
-            // 4) Vue搜索
-            if (vue) {
-                if (typeof vue.handleInput === 'function') vue.handleInput(name);
-                if (typeof vue.handleQueryChange === 'function') vue.handleQueryChange(name);
-                if (typeof vue.filterHandler === 'function') vue.filterHandler(name);
+            // 检查结果
+            const nodes = document.querySelectorAll('.el-cascader-node');
+            let visibleCount = 0;
+            for (const nd of nodes) {
+                const r = nd.getBoundingClientRect();
+                if (r.height > 5) visibleCount++;
             }
-            
-            return 'js_done';
+            return JSON.stringify({visible: vue.dropDownVisible, inputValue: vue.inputValue, visibleNodes: visibleCount, suggestions: vue.suggestions ? vue.suggestions.length : 0});
         }""", shop_name)
         print(f"  [级联触发] {result}")
         time.sleep(1.5)
