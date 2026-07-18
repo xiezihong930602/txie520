@@ -329,30 +329,61 @@ class RpaPublisherExecutor(BaseExecutor):
                 self.page.mouse.click(box['x']+box['width']/2, box['y']+box['height']/2)
         except Exception as e:
             print(f"  ❌ 开面板失败: {e}"); return
-        time.sleep(1.5)
+        time.sleep(2.5)  # 加长等待面板渲染
 
-        # Dump当前可见的级联节点
+        # Dump当前面板里的所有可见元素（适配妙手自定义class）
         print(f"[3/5] 查找父节点「店铺」...")
         parent_pos = self.page.evaluate("""() => {
-            const nodes = document.querySelectorAll('.el-cascader-node');
+            // 适配el和jx两种前缀的cascader节点
+            const nodeSelectors = ['.el-cascader-node', '.jx-cascader-node', '[class*="cascader-node"]'];
+            let nodes = [];
+            for (const sel of nodeSelectors) {
+                nodes = Array.from(document.querySelectorAll(sel));
+                if (nodes.length > 0) break;
+            }
+            
             for (const nd of nodes) {
-                const label = nd.querySelector('.el-cascader-node__label');
-                const txt = (label?.innerText || '').trim();
-                if (txt === '店铺') {
+                // 适配el和jx两种前缀的label
+                const label = nd.querySelector('.el-cascader-node__label, .jx-cascader-node__label, [class*="cascader-node__label"]');
+                const txt = (label?.innerText || nd.innerText || '').trim();
+                if (txt === '店铺' || txt.startsWith('店铺')) {
                     const r = nd.getBoundingClientRect();
-                    return {x: r.left + r.width/2, y: r.top + r.height/2, text: txt, visible: r.height > 0};
+                    if (r.height > 0 && r.width > 0) {
+                        return {x: r.left + r.width/2, y: r.top + r.height/2, text: txt, visible: true, usedSelector: nodes ? 'found' : 'none'};
+                    }
                 }
             }
-            // 兜底：dump所有可见节点
-            const allNodes = [];
-            nodes.forEach(nd => {
-                const r = nd.getBoundingClientRect();
-                if (r.height > 10) {
-                    const lb = nd.querySelector('.el-cascader-node__label');
-                    allNodes.push({text: (lb?.innerText||'').trim(), x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2)});
-                }
-            });
-            return {error: 'parent_not_found', allVisibleNodes: allNodes};
+            // 兜底：dump面板里所有可见元素
+            const panel = document.querySelector('.el-cascader-panel, .jx-cascader-panel, [class*="cascader-panel"], [class*="cascader"] [class*="dropdown"]');
+            const allElements = [];
+            if (panel) {
+                const all = panel.querySelectorAll('*');
+                all.forEach(el => {
+                    const r = el.getBoundingClientRect();
+                    if (r.height > 10 && r.width > 10 && el.children.length === 0) {
+                        allElements.push({
+                            tag: el.tagName,
+                            class: el.className,
+                            text: (el.innerText || '').trim().substring(0, 30),
+                            x: Math.round(r.left + r.width/2),
+                            y: Math.round(r.top + r.height/2)
+                        });
+                    }
+                });
+            }
+            // 如果没找到panel，dump所有可见的小尺寸元素
+            if (allElements.length === 0) {
+                document.querySelectorAll('*').forEach(el => {
+                    const r = el.getBoundingClientRect();
+                    if (r.height > 20 && r.height < 50 && r.width > 100 && r.left > 300 && r.top > 200 && el.children.length === 0) {
+                        const txt = (el.innerText || '').trim();
+                        if (txt && txt.length < 20) {
+                            allElements.push({tag: el.tagName, class: el.className, text: txt, x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2)});
+                        }
+                    }
+                });
+            }
+            return {error: 'parent_not_found', allVisibleElements: allElements.slice(0, 30), nodeCount: nodes.length};
         }""")
         print(f"  父节点查找结果: {json.dumps(parent_pos, ensure_ascii=False)}")
         
@@ -368,13 +399,21 @@ class RpaPublisherExecutor(BaseExecutor):
         # 查找目标店铺节点
         print(f"[5/5] 查找目标店铺「{shop_name}」并点击...")
         shop_pos = self.page.evaluate("""(targetName) => {
-            const nodes = document.querySelectorAll('.el-cascader-node');
+            // 适配el和jx两种前缀的cascader节点
+            const nodeSelectors = ['.el-cascader-node', '.jx-cascader-node', '[class*="cascader-node"]'];
+            let nodes = [];
+            for (const sel of nodeSelectors) {
+                nodes = Array.from(document.querySelectorAll(sel));
+                if (nodes.length > 0) break;
+            }
             for (const nd of nodes) {
-                const label = nd.querySelector('.el-cascader-node__label');
-                const txt = (label?.innerText || '').trim();
-                if (txt === targetName) {
+                const label = nd.querySelector('.el-cascader-node__label, .jx-cascader-node__label, [class*="cascader-node__label"]');
+                const txt = (label?.innerText || nd.innerText || '').trim();
+                if (txt === targetName || txt.includes(targetName)) {
                     const r = nd.getBoundingClientRect();
-                    return {x: r.left + r.width/2, y: r.top + r.height/2, text: txt, visible: r.height > 0};
+                    if (r.height > 0 && r.width > 0) {
+                        return {x: r.left + r.width/2, y: r.top + r.height/2, text: txt, visible: true};
+                    }
                 }
             }
             // 兜底：dump所有可见节点
@@ -382,11 +421,11 @@ class RpaPublisherExecutor(BaseExecutor):
             nodes.forEach(nd => {
                 const r = nd.getBoundingClientRect();
                 if (r.height > 10) {
-                    const lb = nd.querySelector('.el-cascader-node__label');
-                    allNodes.push({text: (lb?.innerText||'').trim(), x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2)});
+                    const lb = nd.querySelector('.el-cascader-node__label, .jx-cascader-node__label, [class*="cascader-node__label"]');
+                    allNodes.push({text: (lb?.innerText||nd.innerText||'').trim(), x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2)});
                 }
             });
-            return {error: 'shop_not_found', allVisibleNodes: allNodes};
+            return {error: 'shop_not_found', allVisibleNodes: allNodes, nodeCount: nodes.length};
         }""", shop_name)
         print(f"  店铺节点查找结果: {json.dumps(shop_pos, ensure_ascii=False)}")
         
