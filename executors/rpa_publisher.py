@@ -331,19 +331,27 @@ class RpaPublisherExecutor(BaseExecutor):
         time.sleep(0.8)
 
         print(f"  [店铺选择-3/3] Playwright点击checkbox...")
+        result = 'not_tried'
+        # 方式1: 点击label文字
         try:
-            item = self.page.locator('.el-cascader-menu__item').filter(has_text=shop_name).first
-            inner = item.locator('.el-checkbox__inner')
-            if inner.count() > 0:
-                inner.first.click(timeout=3000)
-                result = 'clicked_inner'
-            else:
-                result = 'no_inner'
-        except Exception as e:
-            result = f'error: {e}'
+            label_el = self.page.locator('.el-cascader-menu__item .el-checkbox__label', has_text=shop_name).first
+            if label_el.count() > 0:
+                label_el.click(timeout=3000)
+                result = 'clicked_label'
+        except:
+            pass
+        
+        # 方式2: 点击整个li
+        if result == 'not_tried':
+            try:
+                item = self.page.locator('.el-cascader-menu__item').filter(has_text=shop_name).first
+                item.click(timeout=3000)
+                result = 'clicked_item'
+            except Exception as e:
+                result = f'error: {e}'
         print(f"  结果: {result}")
         
-        if result == 'clicked_inner':
+        if result.startswith('clicked'):
             time.sleep(0.3)
             verify = self.page.evaluate("""() => {
                 const cascader = document.querySelector('.jx-pro-cascader');
