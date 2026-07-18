@@ -42,8 +42,8 @@ class RpaPublisherExecutor(BaseExecutor):
         try:
             self._init_browser()
             self._open_create_page()
-            self._apply_template(product.template_name)
             self._select_shop("Noble Boys")
+            self._apply_template(product.template_name)
             print("测试完成，30秒后自动关闭...")
             time.sleep(30)
             return {"success": True, "data": {"skc_id": None}, "error": None}
@@ -305,27 +305,31 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        # 2. 点击打开级联面板
-        clicked = self.page.evaluate("""() => {
-            const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, [role="dialog"]');
-            for (const dlg of dlgs) {
-                if (dlg.getBoundingClientRect().height < 100) continue;
-                const inputs = dlg.querySelectorAll('input:not([type="hidden"]):not([disabled])');
-                for (const inp of inputs) {
-                    const ph = inp.placeholder || '';
-                    if (ph.includes('搜索') || ph.includes('请选择或输入')) {
-                        inp.click();
-                        inp.focus();
-                        return 'clicked';
-                    }
-                }
+        # 2. Vue API 打开面板（不点击DOM，不聚焦，0滚屏）
+        opened = self.page.evaluate("""() => {
+            const cascader = document.querySelector('.jx-pro-cascader');
+            if (!cascader) return 'no_cascader';
+            let el = cascader, vue = null;
+            for (let i = 0; i < 10; i++) {
+                vue = el.__vue__ || (el._vnode?.component?.proxy);
+                if (vue) break;
+                el = el.parentElement;
+                if (!el) break;
             }
-            return 'not_found';
+            if (!vue) return 'no_vue';
+            // 直接调toggle方法，不触发任何DOM事件
+            if (typeof vue.toggleDropDownVisible === 'function') {
+                vue.toggleDropDownVisible();
+                return 'opened';
+            }
+            // 兜底：直接设visible
+            vue.dropDownVisible = true;
+            return 'force_visible';
         }""")
-        print(f"  [打开面板] {clicked}")
-        if clicked == 'not_found':
+        print(f"  [打开面板] {opened}")
+        if opened == 'no_cascader' or opened == 'no_vue':
             return
-        time.sleep(0.5)
+        time.sleep(0.8)
 
         # 3. 点击"店铺"展开子级
         l1 = self.page.evaluate("""() => {
