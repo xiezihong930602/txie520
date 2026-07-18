@@ -295,8 +295,49 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：跳过选择，模板已默认 Noble Boys"""
-        print(f"  店铺选择: {shop_name} (模板默认，跳过)")
+        """选择店铺：删tag → 打开面板 → 勾选checkbox"""
+        # 1. 删除默认tag
+        self.page.evaluate("""() => {
+            const closeBtns = document.querySelectorAll('.jx-tag__close, .el-tag__close, [class*="tag"] [class*="close"]');
+            for (const btn of closeBtns) {
+                const rect = btn.getBoundingClientRect();
+                if (rect.width > 5 && rect.height > 5 && rect.width < 30 && rect.top < 200) {
+                    btn.click();
+                    return;
+                }
+            }
+        }""")
+        time.sleep(0.3)
+
+        # 2. 打开面板
+        self.page.evaluate("""() => {
+            const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, [role="dialog"]');
+            for (const dlg of dlgs) {
+                if (dlg.getBoundingClientRect().height < 100) continue;
+                const inputs = dlg.querySelectorAll('input:not([type="hidden"]):not([disabled])');
+                for (const inp of inputs) {
+                    if ((inp.placeholder||'').includes('请选择或输入搜索')) {
+                        inp.click();
+                        return;
+                    }
+                }
+            }
+        }""")
+        time.sleep(0.8)
+
+        # 3. 勾选店铺名左边的checkbox
+        result = self.page.evaluate("""(name) => {
+            const nodes = document.querySelectorAll('.el-cascader-node');
+            for (const nd of nodes) {
+                const lb = nd.querySelector('.el-cascader-node__label');
+                if (lb && (lb.innerText||'').trim().includes(name)) {
+                    const cb = nd.querySelector('input[type="checkbox"]');
+                    if (cb) { cb.click(); return 'checked'; }
+                }
+            }
+            return 'not_found';
+        }""", shop_name)
+        print(f"  店铺: {result}")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
