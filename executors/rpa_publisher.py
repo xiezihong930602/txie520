@@ -338,27 +338,12 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(1)
 
-        # 4. 鼠标点击左边小方块(.el-checkbox__inner)勾选
-        pos = self.page.evaluate("""(name) => {
-            const nodes = document.querySelectorAll('.el-cascader-node');
-            for (const nd of nodes) {
-                const lb = nd.querySelector('.el-cascader-node__label');
-                if (lb && (lb.innerText||'').trim().includes(name)) {
-                    const inner = nd.querySelector('.el-checkbox__inner');
-                    if (inner) {
-                        const r = inner.getBoundingClientRect();
-                        return {x: r.left + r.width/2, y: r.top + r.height/2};
-                    }
-                }
-            }
-            return null;
-        }""", shop_name)
-        
-        if pos:
-            self.page.mouse.click(pos['x'], pos['y'])
-            result = f"click({pos['x']:.0f},{pos['y']:.0f})"
-        else:
-            result = "not_found"
+        # 4. 用 locator 找到左边小方块点击（不依赖坐标）
+        try:
+            self.page.locator('.el-cascader-node .el-checkbox__inner').first.click(timeout=5000)
+            result = "locator_clicked"
+        except:
+            result = "locator_failed"
         print(f"  店铺: {result}")
     
     def _apply_template(self, template_name: str):
