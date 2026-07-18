@@ -398,27 +398,35 @@ class RpaPublisherExecutor(BaseExecutor):
                     for (const node of nodes) {
                         const label = node.querySelector('.el-cascader-node__label');
                         if (label && label.innerText.trim() === 'Noble Boys') {
-                            // 找左边小方块 .el-checkbox__inner
-                            const inner = node.querySelector('.el-checkbox__inner');
-                            if (inner) {
-                                // 获取坐标，用真实鼠标事件点击
-                                const r = inner.getBoundingClientRect();
-                                return {found: true, x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2), w: Math.round(r.width), h: Math.round(r.height)};
+                            // 找原始checkbox input
+                            const input = node.querySelector('input[type="checkbox"]');
+                            if (input) {
+                                return {found: true, hasInput: true, checked: input.checked};
                             }
-                            return {found: true, no_checkbox: true};
+                            return {found: true, noInput: true};
                         }
                     }
                 }
             }
             return {found: false};
         }""")
-        print(f"  Noble Boys位置: {json.dumps(result2, ensure_ascii=False)}")
+        print(f"  Noble Boys: {json.dumps(result2, ensure_ascii=False)}")
+
         
-        if result2.get('found') and not result2.get('no_checkbox'):
-            # 用page.mouse.click真实点击小方块
-            self.page.mouse.click(result2['x'], result2['y'])
+        if result2.get('found') and result2.get('hasInput'):
+            # 用 locator 找 Noble Boys 节点内的 checkbox input
+            nb_node = self.page.locator('.el-cascader-node', has_text='Noble Boys').first
+            cb_input = nb_node.locator('input[type="checkbox"]')
+            if cb_input.count() > 0:
+                cb_input.first.click(force=True)
+                print(f"  已点击 checkbox input (force=True)")
+            else:
+                # 兜底：点击 .el-checkbox__inner
+                inner = nb_node.locator('.el-checkbox__inner')
+                if inner.count() > 0:
+                    inner.first.click(force=True)
+                    print(f"  已点击 .el-checkbox__inner (force=True)")
             time.sleep(0.5)
-            print(f"  已点击小方块 ({result2['x']}, {result2['y']})")
             
             # 再验证：Vue value是否正确
             verify = self.page.evaluate("""() => {
