@@ -49,8 +49,8 @@ class RpaPublisherExecutor(BaseExecutor):
             self._fill_sku_info(product)
             if auto_submit:
                 result = self._submit()
-                return {"success": True, "data": {"skc_id": result.get("skc_id")}, "error": None}
-            return {"success": True, "data": {"skc_id": None}, "error": None}
+                return {"success": True, "data": {"skc_id": result.get("skc_id"), "product_url": result.get("product_url")}, "error": None}
+            return {"success": True, "data": {"skc_id": None, "product_url": None}, "error": None}
         except Exception as e:
             if self.page:
                 try:
@@ -516,19 +516,78 @@ class RpaPublisherExecutor(BaseExecutor):
         time.sleep(0.5)
     
     def _submit(self) -> dict:
-        """提交创建，返回SKC ID"""
-        # 点击「确定创建」
-        submit_btn = self.page.get_by_role("button", name="确定创建")
+        """提交创建，等待完成，提取SKC ID和商品链接"""
+        print("  [提交] 点击「确定创建」按钮...")
+        # 兼容不同按钮文本：确定创建/提交/保存
+        submit_selectors = [
+            self.page.get_by_role("button", name="确定创建"),
+            self.page.locator(".jx-dialog .jx-button--primary:has-text('确定创建')"),
+            self.page.locator(".jx-dialog .jx-button--primary:has-text('提交')"),
+            self.page.locator(".jx-dialog .jx-button--primary:has-text('保存')"),
+        ]
+        submit_btn = None
+        for sel in submit_selectors:
+            try:
+                if sel.first.is_visible(timeout=2000):
+                    submit_btn = sel.first
+                    break
+            except:
+                continue
+        if not submit_btn:
+            raise Exception("找不到确定创建/提交按钮")
+        
+        # 滚动到按钮位置点击
+        submit_btn.scroll_into_view_if_needed()
         submit_btn.click()
         
-        # 等待创建结果
-        time.sleep(3)
+        # 处理可能的二次确认弹窗
+        time.sleep(1)
+        try:
+            confirm_btn = self.page.get_by_role("button", name="确定").first
+            if confirm_btn.is_visible(timeout=2000):
+                confirm_btn.click()
+                print("  [提交] 处理二次确认弹窗")
+        except:
+            pass
         
-        # TODO: 提取创建成功后的SKC ID
-        # 需要根据实际页面的成功提示/跳转逻辑来提取
+        # 等待提交完成：等成功提示/弹窗关闭
+        print("  [提交] 等待上传提交完成（最长等待30秒）...")
         skc_id = None
+        product_url = None
+        try:
+            # 等待成功提示出现
+            self.page.wait_for_selector(":text('创建成功')", timeout=30000)
+            print("  [提交] 商品创建成功！")
+            time.sleep(2)
+            # 提取SKC ID和链接
+            result = self.page.evaluate("""() => {
+                // 从成功提示/跳转页提取SKC ID
+                const allText = document.body.innerText;
+                const skcMatch = allText.match(/SKC[:：\s]*(\d+)/i);
+                const skc = skcMatch ? skcMatch[1] : null;
+                // 提取商品链接
+                const links = Array.from(document.querySelectorAll('a'));
+                let url = null;
+                for (const a of links) {
+                    if (a.href && (a.href.includes('item/detail') || a.href.includes('skc_id'))) {
+                        url = a.href;
+                        break;
+                    }
+                }
+                return {skc_id: skc, url: url};
+            }""")
+            skc_id = result.get('skc_id')
+            product_url = result.get('url')
+            # 关闭成功弹窗
+            try:
+                self.page.locator(".jx-dialog__close, .el-dialog__close, button:has-text('确定')").first.click(timeout=3000)
+            except:
+                pass
+        except Exception as e:
+            print(f"  [提交] 等待结果超时: {e}，保存截图查看")
+            self.page.screenshot(path="submit_error.png", full_page=True)
         
-        return {"skc_id": skc_id}
+        return {"skc_id": skc_id, "product_url": product_url}
     
     def _close_browser(self):
         """关闭浏览器资源"""
