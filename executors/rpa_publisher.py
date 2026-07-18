@@ -338,17 +338,33 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(1)
 
-        # 4. 勾选 Noble Boys 的 checkbox
+        # 4. 诊断 + 勾选 Noble Boys
         result = self.page.evaluate("""(name) => {
             const nodes = document.querySelectorAll('.el-cascader-node');
+            const info = [];
             for (const nd of nodes) {
                 const lb = nd.querySelector('.el-cascader-node__label');
-                if (lb && (lb.innerText||'').trim().includes(name)) {
-                    const cb = nd.querySelector('input[type="checkbox"]');
-                    if (cb) { cb.click(); return 'checked'; }
+                const txt = (lb?.innerText||'').trim();
+                if (!txt) continue;
+                const cb = nd.querySelector('input[type="checkbox"]');
+                const hasCB = !!cb;
+                // dump node的HTML片段
+                const html = nd.outerHTML.substring(0, 200);
+                info.push({text: txt.substring(0, 20), hasCB, html});
+                if (txt.includes(name)) {
+                    // 找所有可能的可点击元素
+                    const clickable = nd.querySelectorAll('input, label, [class*="check"]');
+                    const clicked = [];
+                    for (const el of clickable) {
+                        el.click();
+                        clicked.push(el.tagName + '.' + (el.className||'').substring(0,30));
+                    }
+                    // 也试label
+                    if (lb) { lb.click(); clicked.push('label'); }
+                    return JSON.stringify({status: 'clicked', clicked, allNodes: info});
                 }
             }
-            return 'not_found';
+            return JSON.stringify({status: 'not_found', allNodes: info});
         }""", shop_name)
         print(f"  店铺: {result}")
     
