@@ -304,13 +304,15 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        # 2. 点击级联输入框（force=true防止滚屏）
-        inp = self.page.locator('.jx-pro-cascader input').first
-        inp.click(force=True)
+        # 2. 点击级联器 div 打开面板(force绕过overlay) + 聚焦(禁止滚屏)
+        self.page.locator('.jx-pro-cascader').first.click(force=True)
+        self.page.evaluate("""() => {
+            const inp = document.querySelector('.jx-pro-cascader input');
+            if (inp) { inp.focus({preventScroll: true}); inp.select(); }
+        }""")
         time.sleep(0.5)
 
-        # 3. 聚焦输入框 + 键盘打字
-        inp.focus()
+        # 3. 键盘打字
         self.page.keyboard.type(shop_name, delay=50)
         time.sleep(1.5)
 
