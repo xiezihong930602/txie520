@@ -326,11 +326,10 @@ class RpaPublisherExecutor(BaseExecutor):
             return
         time.sleep(0.5)
 
-        # 3. 设Vue inputValue + 原生value + forceUpdate
+        # 3. 只设Vue inputValue + 调handleInput（不碰DOM，避免Vue重置）
         self.page.evaluate("""(name) => {
             const cascader = document.querySelector('.jx-pro-cascader');
             if (!cascader) return;
-            const inp = cascader.querySelector('input');
             let el = cascader, vue = null;
             for (let i = 0; i < 10; i++) {
                 vue = el.__vue__ || (el._vnode?.component?.proxy);
@@ -338,20 +337,19 @@ class RpaPublisherExecutor(BaseExecutor):
                 el = el.parentElement;
                 if (!el) break;
             }
-            // 1) Vue 内部状态
-            if (vue) {
-                vue.inputValue = name;
-                vue.filtering = true;
-                if (typeof vue.$forceUpdate === 'function') vue.$forceUpdate();
-                if (typeof vue.handleQueryChange === 'function') vue.handleQueryChange(name);
-                if (typeof vue.filterHandler === 'function') vue.filterHandler(name);
+            if (!vue) return;
+            // 只改Vue状态，不碰DOM
+            vue.inputValue = name;
+            // Vue.nextTick + handleQueryChange 触发过滤
+            if (typeof vue.handleQueryChange === 'function') {
+                vue.handleQueryChange(name);
             }
-            // 2) 原生DOM值
-            if (inp) {
-                const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                ns.call(inp, name);
-                inp.dispatchEvent(new Event('input', {bubbles:true}));
-                inp.dispatchEvent(new Event('change', {bubbles:true}));
+            if (typeof vue.filterHandler === 'function') {
+                vue.filterHandler(name);
+            }
+            // 强制更新DOM
+            if (typeof vue.$forceUpdate === 'function') {
+                vue.$forceUpdate();
             }
         }""", shop_name)
         time.sleep(1.5)
