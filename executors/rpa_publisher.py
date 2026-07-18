@@ -347,60 +347,29 @@ class RpaPublisherExecutor(BaseExecutor):
         print(f"  [L1-店铺] {l1}")
         time.sleep(1)
 
-        # 4. 调Vue handleSuggestionClick 选中店铺
-        result = self.page.evaluate("""(name) => {
-            const cascader = document.querySelector('.jx-pro-cascader');
-            if (!cascader) return 'no_cascader';
-            let el = cascader, vue = null;
-            for (let i = 0; i < 10; i++) {
-                vue = el.__vue__ || (el._vnode?.component?.proxy);
-                if (vue) break;
-                el = el.parentElement;
-                if (!el) break;
-            }
-            if (!vue) return 'no_vue';
-            
-            // 从 suggestions / checkedNodes 中找目标
-            const suggestions = vue.suggestions || vue.checkedNodes || [];
-            let target = null;
-            for (const s of (Array.isArray(suggestions) ? suggestions : [])) {
-                if ((s.label || s.text || '').includes(name)) {
-                    target = s;
-                    break;
+        # 4. 点击 Noble Boys label —— 面板会关闭但不渲染tag，需额外触发确认
+        l2 = self.page.evaluate("""(name) => {
+            const nodes = document.querySelectorAll('.el-cascader-node');
+            for (const nd of nodes) {
+                const lb = nd.querySelector('.el-cascader-node__label');
+                if (lb && (lb.innerText||'').trim().includes(name)) {
+                    lb.click();
+                    return 'clicked';
                 }
             }
-            
-            // 如果 suggestions 没有，就从DOM节点的data中找
-            if (!target) {
-                const nodes = document.querySelectorAll('.el-cascader-node');
-                for (const nd of nodes) {
-                    const lb = nd.querySelector('.el-cascader-node__label');
-                    if ((lb?.innerText||'').includes(name)) {
-                        target = {label: name, value: nd.getAttribute('data-value') || name};
-                        break;
-                    }
-                }
-            }
-            
-            if (!target) return 'target_not_found';
-            
-            // 调 handleSuggestionClick — 需要完整的 option 对象
-            if (typeof vue.handleSuggestionClick === 'function') {
-                // 构造完整 option 对象（el-cascader需要 checked, hasChildren等字段）
-                const opt = Object.assign({
-                    checked: true,
-                    hasChildren: false,
-                    level: 1,
-                    isLeaf: true
-                }, target);
-                vue.handleSuggestionClick(opt);
-                return JSON.stringify({status: 'suggestion_clicked', target: target.label || name});
-            }
-            
-            return 'no_method';
+            return 'not_found';
         }""", shop_name)
-        print(f"  [店铺选择] {result}")
+        print(f"  [店铺选择] {l2}")
         time.sleep(0.5)
+
+        # 5. 面板关闭后，触发input change确保tag渲染
+        self.page.evaluate("""() => {
+            const inp = document.querySelector('.jx-pro-cascader input');
+            if (inp) {
+                inp.dispatchEvent(new Event('change', {bubbles: true}));
+                inp.dispatchEvent(new Event('blur', {bubbles: true}));
+            }
+        }""")
         print(f"  店铺选择: {shop_name}")
     
     def _apply_template(self, template_name: str):
