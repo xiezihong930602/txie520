@@ -330,22 +330,30 @@ class RpaPublisherExecutor(BaseExecutor):
             return
         time.sleep(0.8)
 
-        # 3. 点击 Noble Boys + Enter确认选中
-        l2 = self.page.evaluate("""(name) => {
+        # 3. 获取 label 坐标，用 page.mouse 模拟真实用户点击
+        pos = self.page.evaluate("""(name) => {
             const nodes = document.querySelectorAll('.el-cascader-node');
             for (const nd of nodes) {
                 const lb = nd.querySelector('.el-cascader-node__label');
                 if (lb && (lb.innerText||'').trim().includes(name)) {
-                    lb.click();
-                    return 'clicked';
+                    const r = lb.getBoundingClientRect();
+                    return {x: r.left + r.width/2, y: r.top + r.height/2};
                 }
             }
-            return 'not_found';
+            return null;
         }""", shop_name)
-        print(f"  [店铺选择] {l2}")
-        time.sleep(0.3)
 
-        # 按Enter确认选中
+        if pos:
+            self.page.mouse.move(pos['x'], pos['y'])
+            time.sleep(0.2)
+            self.page.mouse.click(pos['x'], pos['y'])
+            result = f"mouse_click({pos['x']:.0f},{pos['y']:.0f})"
+        else:
+            result = "not_found"
+        print(f"  [店铺选择] {result}")
+        time.sleep(0.5)
+
+        # 面板关闭后 Enter 确认
         self.page.keyboard.press("Enter")
         time.sleep(0.3)
 
