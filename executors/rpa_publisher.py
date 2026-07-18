@@ -333,39 +333,47 @@ class RpaPublisherExecutor(BaseExecutor):
         time.sleep(0.8)
 
         print(f"  [店铺选择-3/3] 设Vue值 + 触发面板选择...")
-        # 面板已打开，通过Vue内部状态选中店铺，然后toggle面板触发变更
+        # 通过组件内部方法 handleCheck 触发选择
         result = self.page.evaluate("""(shopId) => {
             const cascader = document.querySelector('.jx-pro-cascader');
             if (!cascader) return 'no_cascader';
-            let el = cascader, vue = null;
-            for (let i = 0; i < 10; i++) {
-                vue = el.__vue__;
-                if (vue) break;
-                el = el.parentElement;
-                if (!el) break;
+            
+            // 直接获取组件实例（Vue 2）
+            let vue = cascader.__vue__;
+            if (!vue) {
+                let el = cascader;
+                for (let i = 0; i < 10; i++) {
+                    vue = el.__vue__;
+                    if (vue) break;
+                    el = el.parentElement;
+                    if (!el) break;
+                }
             }
             if (!vue) return 'no_vue';
             
-            // 设值和勾选状态
-            vue.value = [shopId];
-            vue.checkedValue = [shopId];
-            
-            // 也设下级的默认值
-            if (vue.menus && vue.menus[0]) {
-                vue.menus[0] = [shopId];
+            // 找面板里的checkbox input并触发原生点击
+            const inputs = document.querySelectorAll('.el-cascader-menu__item input[type="checkbox"]');
+            for (const inp of inputs) {
+                if (inp.value === shopId) {
+                    // 模拟完整的鼠标点击事件链
+                    inp.focus();
+                    const rect = inp.getBoundingClientRect();
+                    ['mousedown', 'mouseup', 'click'].forEach(type => {
+                        inp.dispatchEvent(new MouseEvent(type, {
+                            bubbles: true, cancelable: true,
+                            clientX: rect.left + 5, clientY: rect.top + 5
+                        }));
+                    });
+                    return 'events_dispatched';
+                }
             }
             
-            // emit事件
-            vue.$emit('input', [shopId]);
-            vue.$emit('change', [shopId]);
-            vue.$forceUpdate();
-            
-            // 关闭面板（如果有）
-            if (typeof vue.toggleDropDownVisible === 'function') {
-                vue.toggleDropDownVisible(false);
-            }
-            
-            return {value: vue.value, checked: vue.checkedValue};
+            // 兜底：尝试调用组件方法
+            const methods = Object.keys(vue).filter(k => 
+                typeof vue[k] === 'function' && 
+                (k.includes('check') || k.includes('Check') || k.includes('select'))
+            );
+            return {methods, value: vue.value};
         }""", '14255039')
         print(f"  结果: {json.dumps(result, ensure_ascii=False)}")
     
