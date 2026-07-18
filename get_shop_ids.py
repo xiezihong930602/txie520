@@ -77,21 +77,21 @@ with sync_playwright() as p:
                     el = el.parentElement;
                     if (!el) break;
                 }
-                if (vue && vue.cachedOptions) {
-                    // 搜索children
+                if (vue && vue.options) {
+                    // 递归搜索children
                     const search = (opts) => {
                         if (!opts) return;
                         for (const o of opts) {
-                            if (o.label === txt) { val = o.value; return; }
-                            if (o.children) search(o.children);
+                            if (String(o.label).trim() === txt) { val = o.value; return; }
+                            if (o.children) search(Array.isArray(o.children)?o.children:Object.values(o.children));
                         }
                     };
-                    search(vue.cachedOptions);
+                    search(vue.options);
                 }
             }
             if (!val) {
-                // fallback: from DOM
-                val = nd.getAttribute('data-value') || '';
+                // fallback: from DOM data属性
+                val = nd.getAttribute('data-value') || nd.getAttribute('data-node-value') || '';
             }
             result.push({label: txt, value: val});
         }

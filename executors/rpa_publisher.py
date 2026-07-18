@@ -368,7 +368,7 @@ class RpaPublisherExecutor(BaseExecutor):
             }
             
             return {action:'no_node', options: dump, checkedNodes: vue.checkedNodes ? vue.checkedNodes.length : 0};
-        }""", '14255039')
+        }""", '14255939')
         print(f"  结果: {json.dumps(result, ensure_ascii=False)[:2000]}")
     
     def _apply_template(self, template_name: str):
