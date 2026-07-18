@@ -304,7 +304,7 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 开面板 → dump节点 + 调handleCheckChange"""
+        """选择店铺：删tag → 开面板 → 直接设vue.value + 触发更新（唯一验证通过方案）"""
         print(f"  [店铺选择-1/3] 删除默认tag...")
         self.page.evaluate("""() => {
             const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
@@ -329,7 +329,7 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  失败: {e}"); return
         time.sleep(1.0)
 
-        print(f"  [店铺选择-3/3] dump options + handleCheckChange...")
+        print(f"  [店铺选择-3/3] 设置Vue value选中Noble Boys...")
         result = self.page.evaluate("""(shopId) => {
             const cascader = document.querySelector('.jx-pro-cascader');
             if (!cascader) return 'no_cascader';
@@ -340,36 +340,18 @@ class RpaPublisherExecutor(BaseExecutor):
             }
             if (!vue) return 'no_vue';
             
-            // dump options结构
-            const opts = vue.options || [];
-            const dump = opts.map(o => ({
-                value: o.value, label: o.label,
-                hasChildren: !!o.children,
-                childCount: o.children ? (Array.isArray(o.children)?o.children.length:Object.keys(o.children).length) : 0,
-                firstChild: o.children && o.children.length > 0 ? o.children[0].value : null
-            }));
+            // 唯一验证通过的方案：直接设value + 触发事件 + 强制更新
+            vue.value = [shopId];
+            vue.$emit('input', [shopId]);
+            vue.$emit('change', [shopId]);
+            vue.$forceUpdate();
             
-            // 找匹配shopId的节点
-            let node = null;
-            const search = (arr) => {
-                if (!arr || node) return;
-                for (const n of arr) {
-                    if (String(n.value) === shopId || n.value === shopId) { node = n; return; }
-                    if (n.children) search(Array.isArray(n.children)?n.children:Object.values(n.children));
-                }
-            };
-            search(opts);
-            if (!node && vue.checkedNodes) search(vue.checkedNodes);
-            
-            // 找到就调handleCheckChange
-            if (node && typeof vue.handleCheckChange === 'function') {
-                vue.handleCheckChange(node, true);
-                return {action:'handleCheckChange', value: vue.value, checked: vue.checkedValue, options: dump};
-            }
-            
-            return {action:'no_node', options: dump, checkedNodes: vue.checkedNodes ? vue.checkedNodes.length : 0};
+            return {action:'set_vue_value', value: vue.value, checked: vue.checkedValue};
         }""", '14255939')
-        print(f"  结果: {json.dumps(result, ensure_ascii=False)[:2000]}")
+        print(f"  结果: {json.dumps(result, ensure_ascii=False)}")
+        time.sleep(0.8)
+        # 点击空白处关闭面板
+        self.page.mouse.click(10, 10)
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
