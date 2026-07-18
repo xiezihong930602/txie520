@@ -290,7 +290,7 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 点输入框 → 打字 → 点结果"""
+        """选择店铺：删tag → 扫描弹窗找input → JS点击 → 键盘打字 → 点结果"""
         # 1. 无脑删除默认tag
         self.page.evaluate("""() => {
             const closeBtns = document.querySelectorAll('.jx-tag__close, .el-tag__close, [class*="tag"] [class*="close"]');
@@ -304,11 +304,32 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        # 2. Vue API 直接操作：打开面板 + 设值 + 触发过滤
-        result = self.page.evaluate("""(name) => {
+        # 2. 扫描弹窗内所有input，找店铺相关的（label=店铺 或 placeholder含搜索）
+        clicked = self.page.evaluate("""() => {
+            const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, .jx-overlay-dialog, [role="dialog"]');
+            for (const dlg of dlgs) {
+                if (dlg.getBoundingClientRect().height < 100) continue;
+                const inputs = dlg.querySelectorAll('input:not([type="hidden"]):not([disabled])');
+                for (const inp of inputs) {
+                    const ph = inp.placeholder || '';
+                    if (ph.includes('搜索') || ph.includes('请选择或输入')) {
+                        inp.click();
+                        inp.focus();
+                        return 'clicked';
+                    }
+                }
+            }
+            return 'not_found';
+        }""")
+        print(f"  [点击输入框] {clicked}")
+        if clicked == 'not_found':
+            return
+        time.sleep(0.5)
+
+        # 3. 调Vue handleInput 方法设值 + 触发过滤
+        self.page.evaluate("""(name) => {
             const cascader = document.querySelector('.jx-pro-cascader');
-            if (!cascader) return 'no_cascader';
-            
+            if (!cascader) return;
             let el = cascader, vue = null;
             for (let i = 0; i < 10; i++) {
                 vue = el.__vue__ || (el._vnode?.component?.proxy);
@@ -316,30 +337,13 @@ class RpaPublisherExecutor(BaseExecutor):
                 el = el.parentElement;
                 if (!el) break;
             }
-            if (!vue) return 'no_vue';
-            
-            // 直接操作Vue状态
-            vue.dropDownVisible = true;
-            vue.inputValue = name;
-            vue.filtering = true;
-            
-            // 调用过滤方法
-            if (typeof vue.filterHandler === 'function') vue.filterHandler(name);
-            if (typeof vue.handleQueryChange === 'function') vue.handleQueryChange(name);
-            
-            // 检查结果
-            const nodes = document.querySelectorAll('.el-cascader-node');
-            let visibleCount = 0;
-            for (const nd of nodes) {
-                const r = nd.getBoundingClientRect();
-                if (r.height > 5) visibleCount++;
+            if (vue && typeof vue.handleInput === 'function') {
+                vue.handleInput(name);
             }
-            return JSON.stringify({visible: vue.dropDownVisible, inputValue: vue.inputValue, visibleNodes: visibleCount, suggestions: vue.suggestions ? vue.suggestions.length : 0});
         }""", shop_name)
-        print(f"  [级联触发] {result}")
         time.sleep(1.5)
 
-        # 3. 点击出现的店铺名
+        # 4. 点击下拉中出现的店铺名
         result = self.page.evaluate("""(name) => {
             const nodes = document.querySelectorAll('.el-cascader-node');
             for (const nd of nodes) {
@@ -352,11 +356,8 @@ class RpaPublisherExecutor(BaseExecutor):
             return 'not_found';
         }""", shop_name)
         print(f"  [店铺选择] {result}")
-        time.sleep(0.3)
-
         if result == 'not_found':
             print(f"  警告: 未在下拉中找到 {shop_name}")
-        
         print(f"  店铺选择: {shop_name}")
     
     def _apply_template(self, template_name: str):
