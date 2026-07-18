@@ -305,9 +305,9 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：完全模拟用户真实鼠标点击，不碰Vue内部状态，100%触发事件"""
-        print(f"\n=== 店铺选择调试开始（真实点击方案） ===")
-        print(f"[1/5] 删除默认tag...")
+        """选择店铺：完全人眼模拟，全局搜文本找元素直接点坐标，不依赖任何class"""
+        print(f"\n=== 店铺选择调试开始（全局文本搜索方案） ===")
+        print(f"[1/4] 删除默认tag...")
         self.page.evaluate("""() => {
             const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
             for (const btn of btns) {
@@ -319,7 +319,7 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        print(f"[2/5] 点击输入框开级联面板...")
+        print(f"[2/4] 点击输入框开级联面板...")
         try:
             inp = self.page.locator('.jx-dialog input[placeholder*="请选择或输入搜索"]').first
             if inp.count() == 0:
@@ -329,122 +329,51 @@ class RpaPublisherExecutor(BaseExecutor):
                 self.page.mouse.click(box['x']+box['width']/2, box['y']+box['height']/2)
         except Exception as e:
             print(f"  ❌ 开面板失败: {e}"); return
-        time.sleep(2.5)  # 加长等待面板渲染
+        time.sleep(3)  # 足够时间等面板完全渲染
 
-        # 先直接找目标店铺节点（面板默认已经展开店铺列表，不需要先点父节点）
-        print(f"[3/5] 直接查找目标店铺「{shop_name}」...")
-        shop_pos = self.page.evaluate("""(targetName) => {
-            // 适配el和jx两种前缀的cascader节点
-            const nodeSelectors = ['.el-cascader-node', '.jx-cascader-node', '[class*="cascader-node"]'];
-            let nodes = [];
-            for (const sel of nodeSelectors) {
-                nodes = Array.from(document.querySelectorAll(sel));
-                if (nodes.length > 0) break;
-            }
-            for (const nd of nodes) {
-                const label = nd.querySelector('.el-cascader-node__label, .jx-cascader-node__label, [class*="cascader-node__label"]');
-                const txt = (label?.innerText || nd.innerText || '').trim();
-                if (txt === targetName || txt.includes(targetName)) {
-                    const r = nd.getBoundingClientRect();
-                    if (r.height > 0 && r.width > 0) {
-                        return {x: r.left + r.width/2, y: r.top + r.height/2, text: txt, visible: true, foundDirect: true};
+        # 全局搜索文本匹配的可见元素，直接点
+        print(f"[3/4] 全局搜索文本「{shop_name}」的可见元素...")
+        target_pos = self.page.evaluate("""(targetText) => {
+            const allEls = document.querySelectorAll('*');
+            const matches = [];
+            const allVisibleTexts = [];
+            
+            for (const el of allEls) {
+                // 只看叶子节点（没有子元素的，避免父元素重复匹配）
+                if (el.children.length > 0) continue;
+                const txt = (el.innerText || el.textContent || '').trim();
+                if (!txt || txt.length > 30) continue;
+                const r = el.getBoundingClientRect();
+                // 只看可见、在弹窗范围内的元素（y>200在创建弹窗内，不是页面其他地方的）
+                if (r.height > 10 && r.height < 50 && r.width > 20 && r.top > 200 && r.top < 800) {
+                    allVisibleTexts.push({text: txt, x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2)});
+                    if (txt === targetText || txt.includes(targetText)) {
+                        matches.push({x: r.left + r.width/2, y: r.top + r.height/2, text: txt, tag: el.tagName, class: el.className});
                     }
                 }
             }
-            return null;
+            
+            if (matches.length > 0) {
+                // 取最靠上的匹配项
+                matches.sort((a,b) => a.y - b.y);
+                return {found: true, pos: matches[0], allMatches: matches.length, allVisibleTexts: allVisibleTexts.slice(0, 30)};
+            }
+            return {found: false, allVisibleTexts: allVisibleTexts.slice(0, 50)};
         }""", shop_name)
-
-        if shop_pos:
-            print(f"  ✅ 直接找到目标店铺节点: {json.dumps(shop_pos, ensure_ascii=False)}")
-            print(f"[5/5] 点击店铺节点...")
-            self.page.mouse.click(shop_pos['x'], shop_pos['y'])
-            time.sleep(1)
-        else:
-            # 没找到的话再尝试点「店铺」父节点展开
-            print(f"[3/5] 未直接找到店铺，尝试查找父节点「店铺」展开...")
-            parent_pos = self.page.evaluate("""() => {
-                const nodeSelectors = ['.el-cascader-node', '.jx-cascader-node', '[class*="cascader-node"]'];
-                let nodes = [];
-                for (const sel of nodeSelectors) {
-                    nodes = Array.from(document.querySelectorAll(sel));
-                    if (nodes.length > 0) break;
-                }
-                
-                for (const nd of nodes) {
-                    const label = nd.querySelector('.el-cascader-node__label, .jx-cascader-node__label, [class*="cascader-node__label"]');
-                    const txt = (label?.innerText || nd.innerText || '').trim();
-                    if (txt === '店铺' || txt.startsWith('店铺')) {
-                        const r = nd.getBoundingClientRect();
-                        if (r.height > 0 && r.width > 0) {
-                            return {x: r.left + r.width/2, y: r.top + r.height/2, text: txt, visible: true};
-                        }
-                    }
-                }
-                // 兜底：dump前20个节点文本
-                const nodeTexts = [];
-                nodes.slice(0, 20).forEach(nd => {
-                    const r = nd.getBoundingClientRect();
-                    if (r.height > 10) {
-                        const lb = nd.querySelector('.el-cascader-node__label, .jx-cascader-node__label, [class*="cascader-node__label"]');
-                        nodeTexts.push((lb?.innerText||nd.innerText||'').trim());
-                    }
-                });
-                return {error: 'parent_not_found', nodeTexts: nodeTexts, nodeCount: nodes.length};
-            }""")
-            print(f"  父节点查找结果: {json.dumps(parent_pos, ensure_ascii=False)}")
-            
-            if 'error' in parent_pos:
-                print(f"  ❌ 未找到父节点，上面是前20个节点文本")
-                return
-            
-            # 点击父节点展开
-            print(f"[4/5] 点击「店铺」父节点展开子列表...")
-            self.page.mouse.click(parent_pos['x'], parent_pos['y'])
-            time.sleep(1.5)
-
-            # 再找店铺节点
-            print(f"[5/5] 查找目标店铺「{shop_name}」并点击...")
-            shop_pos = self.page.evaluate("""(targetName) => {
-                const nodeSelectors = ['.el-cascader-node', '.jx-cascader-node', '[class*="cascader-node"]'];
-                let nodes = [];
-                for (const sel of nodeSelectors) {
-                    nodes = Array.from(document.querySelectorAll(sel));
-                    if (nodes.length > 0) break;
-                }
-                for (const nd of nodes) {
-                    const label = nd.querySelector('.el-cascader-node__label, .jx-cascader-node__label, [class*="cascader-node__label"]');
-                    const txt = (label?.innerText || nd.innerText || '').trim();
-                    if (txt === targetName || txt.includes(targetName)) {
-                        const r = nd.getBoundingClientRect();
-                        if (r.height > 0 && r.width > 0) {
-                            return {x: r.left + r.width/2, y: r.top + r.height/2, text: txt, visible: true};
-                        }
-                    }
-                }
-                // 兜底dump节点
-                const nodeTexts = [];
-                nodes.forEach(nd => {
-                    const r = nd.getBoundingClientRect();
-                    if (r.height > 10) {
-                        const lb = nd.querySelector('.el-cascader-node__label, .jx-cascader-node__label, [class*="cascader-node__label"]');
-                        nodeTexts.push((lb?.innerText||nd.innerText||'').trim());
-                    }
-                });
-                return {error: 'shop_not_found', nodeTexts: nodeTexts, nodeCount: nodes.length};
-            }""", shop_name)
-            print(f"  店铺节点查找结果: {json.dumps(shop_pos, ensure_ascii=False)}")
-            
-            if 'error' in shop_pos:
-                print(f"  ❌ 未找到「{shop_name}」节点，上面是所有节点文本")
-                return
-            
-            # 点击店铺节点
-            self.page.mouse.click(shop_pos['x'], shop_pos['y'])
-            time.sleep(1)
+        print(f"  搜索结果: {json.dumps(target_pos, ensure_ascii=False)[:2000]}")
+        
+        if not target_pos.get('found'):
+            print(f"  ❌ 未找到文本「{shop_name}」，上面是所有可见短文本元素")
+            return
+        
+        pos = target_pos['pos']
+        print(f"[4/4] 点击匹配到的元素: ({int(pos['x'])}, {int(pos['y'])}) 文本=「{pos['text']}」")
+        self.page.mouse.click(pos['x'], pos['y'])
+        time.sleep(1.5)
 
         # 验证最终结果
         final_text = self.page.evaluate("""() => {
-            const cascader = document.querySelector('.jx-pro-cascader, .el-cascader');
+            const cascader = document.querySelector('.jx-pro-cascader, .el-cascader, [class*="cascader"]');
             return cascader?.querySelector('input')?.value || '';
         }""")
         print(f"\n=== 最终选中结果：输入框显示文本 =「{final_text}」 ===")
