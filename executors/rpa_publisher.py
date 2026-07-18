@@ -38,14 +38,18 @@ class RpaPublisherExecutor(BaseExecutor):
         self.channel = config.get("channel", None)  # "chrome" 表示用系统安装的Chrome
     
     def execute(self, product: Product, auto_close: bool = True, auto_submit: bool = True) -> dict:
-        """执行完整上架流程 — 测试模式：只测店铺选择"""
+        """执行完整上架流程"""
         try:
             self._init_browser()
             self._open_create_page()
             self._select_shop("Noble Boys")
             self._apply_template(product.template_name)
-            print("测试完成，30秒后自动关闭...")
-            time.sleep(30)
+            self._fill_variable_attributes(product)
+            self._fill_basic_info(product)
+            self._fill_sku_info(product)
+            if auto_submit:
+                result = self._submit()
+                return {"success": True, "data": {"skc_id": result.get("skc_id")}, "error": None}
             return {"success": True, "data": {"skc_id": None}, "error": None}
         except Exception as e:
             if self.page:
@@ -326,28 +330,7 @@ class RpaPublisherExecutor(BaseExecutor):
             return
         time.sleep(0.8)
 
-        # 3. 诊断 + 点击"店铺"节点（可能在popper里）
-        l1 = self.page.evaluate("""() => {
-            // 先看所有可能的级联节点
-            const allNodes = document.querySelectorAll('.el-cascader-node, .el-cascader-menu li, [role="menuitem"]');
-            const found = [];
-            for (const nd of allNodes) {
-                const txt = (nd.innerText||'').trim().substring(0, 30);
-                const r = nd.getBoundingClientRect();
-                if (r.height > 5 || txt) {
-                    found.push({text: txt, h: Math.round(r.height)});
-                }
-                if (txt === '店铺') {
-                    nd.click();
-                    return JSON.stringify({status: 'clicked', allNodes: found});
-                }
-            }
-            return JSON.stringify({status: 'not_found', allNodes: found, total: allNodes.length});
-        }""")
-        print(f"  [L1-店铺] {l1}")
-        time.sleep(1)
-
-        # 4. 点击 Noble Boys label —— 面板会关闭但不渲染tag，需额外触发确认
+        # 3. 点击 Noble Boys + Enter确认选中
         l2 = self.page.evaluate("""(name) => {
             const nodes = document.querySelectorAll('.el-cascader-node');
             for (const nd of nodes) {
@@ -360,9 +343,13 @@ class RpaPublisherExecutor(BaseExecutor):
             return 'not_found';
         }""", shop_name)
         print(f"  [店铺选择] {l2}")
-        time.sleep(0.5)
+        time.sleep(0.3)
 
-        # 5. 面板关闭后，触发input change确保tag渲染
+        # 按Enter确认选中
+        self.page.keyboard.press("Enter")
+        time.sleep(0.3)
+
+        # 触发事件确保tag渲染
         self.page.evaluate("""() => {
             const inp = document.querySelector('.jx-pro-cascader input');
             if (inp) {
