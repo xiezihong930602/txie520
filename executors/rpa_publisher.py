@@ -304,7 +304,7 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 打开面板 → 点checkbox"""
+        """选择店铺：删tag → 打开面板（确保focus）→ 勾选checkbox"""
         print(f"  [店铺选择-1/3] 删除默认tag...")
         self.page.evaluate("""() => {
             const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
@@ -317,87 +317,46 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        print(f"  [店铺选择-2/3] 打开级联面板...")
-        self.page.evaluate("""() => {
-            const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, [role="dialog"]');
-            for (const dlg of dlgs) {
-                if (dlg.getBoundingClientRect().height < 100) continue;
-                const inputs = dlg.querySelectorAll('input:not([type="hidden"]):not([disabled])');
-                for (const inp of inputs) {
-                    if ((inp.placeholder||'').includes('请选择或输入搜索')) {
-                        inp.click(); return;
-                    }
-                }
-            }
-        }""")
+        print(f"  [店铺选择-2/3] Playwright点击输入框打开面板...")
+        # 用Playwright真实点击（带focus），不是JS click
+        try:
+            # 找弹窗内placeholder含"请选择或输入搜索"的input
+            inp = self.page.locator('.jx-dialog input[placeholder*="请选择或输入搜索"]').first
+            if inp.count() == 0:
+                inp = self.page.locator('[role="dialog"] input[placeholder*="请选择或输入搜索"]').first
+            inp.click(timeout=3000)
+        except Exception as e:
+            print(f"  打开面板失败: {e}")
+            return
         time.sleep(0.8)
 
-        print(f"  [店铺选择-3/3] 设Vue值 + 触发面板选择...")
-        # 通过组件方法 handleCheckChange 触发选择
-        result = self.page.evaluate("""(shopId) => {
-            const cascader = document.querySelector('.jx-pro-cascader');
-            if (!cascader) return 'no_cascader';
-            let vue = cascader.__vue__;
-            if (!vue) {
-                let el = cascader;
+        print(f"  [店铺选择-3/3] Playwright点击checkbox...")
+        try:
+            item = self.page.locator('.el-cascader-menu__item').filter(has_text=shop_name).first
+            inner = item.locator('.el-checkbox__inner')
+            if inner.count() > 0:
+                inner.first.click(timeout=3000)
+                result = 'clicked_inner'
+            else:
+                result = 'no_inner'
+        except Exception as e:
+            result = f'error: {e}'
+        print(f"  结果: {result}")
+        
+        if result == 'clicked_inner':
+            time.sleep(0.3)
+            verify = self.page.evaluate("""() => {
+                const cascader = document.querySelector('.jx-pro-cascader');
+                if (!cascader) return 'no_cascader';
+                let el = cascader, vue = null;
                 for (let i = 0; i < 10 && !vue; i++) {
                     vue = el.__vue__;
                     el = el.parentElement;
                     if (!el) break;
                 }
-            }
-            if (!vue) return 'no_vue';
-            
-            let node = null;
-            
-            // 从面板DOM元素的__vue__获取真实Vue节点
-            const items = document.querySelectorAll('.el-cascader-menu__item');
-            for (const item of items) {
-                const input = item.querySelector('input[type="checkbox"]');
-                if (input && input.value === shopId) {
-                    // 尝试从li、label或内部元素取Vue实例
-                    node = item.__vue__ || input.__vue__;
-                    if (!node) {
-                        // 遍历父链找Vue
-                        let el = item;
-                        for (let j = 0; j < 5 && !node; j++) {
-                            node = el.__vue__;
-                            el = el.parentElement;
-                        }
-                    }
-                    break;
-                }
-            }
-            
-            if (!node) {
-                // last resort: 从vue.flatOptions中找
-                const flatOpts = vue.flatOptions || vue.$refs?.cascaderPanel?.flatOptions;
-                if (flatOpts) {
-                    node = flatOpts.find(n => String(n.value) === shopId);
-                }
-            }
-            
-            if (!node) {
-                // 再试：vue.options[0].children
-                const rootChildren = vue.options?.[0]?.children;
-                if (rootChildren) {
-                    for (const c of rootChildren) {
-                        if (String(c.value) === shopId) { node = c; break; }
-                    }
-                }
-            }
-            
-            if (!node) return 'no_node';
-            
-            // 调用组件内部方法勾选
-            if (typeof vue.handleCheckChange === 'function') {
-                vue.handleCheckChange(node, true);
-                return 'handleCheckChange_called';
-            }
-            
-            return 'no_handleCheckChange';
-        }""", '14255039')
-        print(f"  结果: {json.dumps(result, ensure_ascii=False)}")
+                return vue ? {value: vue.value, checked: vue.checkedValue} : 'no_vue';
+            }""")
+            print(f"  验证Vue: {json.dumps(verify, ensure_ascii=False)}")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
