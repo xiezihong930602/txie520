@@ -42,8 +42,8 @@ class RpaPublisherExecutor(BaseExecutor):
         try:
             self._init_browser()
             self._open_create_page()
-            self._select_shop("Noble Boys")
             self._apply_template(product.template_name)
+            self._select_shop("Noble Boys")
             self._fill_variable_attributes(product)
             self._fill_basic_info(product)
             self._fill_sku_info(product)
