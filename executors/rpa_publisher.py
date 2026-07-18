@@ -332,53 +332,42 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.8)
 
-        print(f"  [店铺选择-3/3] 勾选checkbox...")
-        result = 'not_tried'
-        # 精准点击左边小方块 .el-checkbox__inner
-        try:
-            item = self.page.locator('.el-cascader-menu__item').filter(has_text=shop_name).first
-            inner = item.locator('.el-checkbox__inner')
-            if inner.count() > 0:
-                inner.first.click(force=True, timeout=3000)
-                result = 'clicked_inner'
-        except Exception as e:
-            pass
-        
-        # 兜底：dispatch click + change 到原始input
-        if result == 'not_tried':
-            result = self.page.evaluate("""(shop) => {
-                const items = document.querySelectorAll('.el-cascader-menu__item');
-                for (const item of items) {
-                    const label = item.querySelector('.el-checkbox__label');
-                    if (label && label.innerText.trim() === shop) {
-                        const input = item.querySelector('input[type="checkbox"]');
-                        if (input) {
-                            input.checked = !input.checked;
-                            input.dispatchEvent(new Event('change', {bubbles: true}));
-                            input.dispatchEvent(new Event('input', {bubbles: true}));
-                            return 'dispatched';
-                        }
-                    }
-                }
-                return 'not_found';
-            }""", shop_name)
-        print(f"  结果: {result}")
-        
-        if result in ('clicked_inner', 'dispatched'):
-            time.sleep(0.3)
-            verify = self.page.evaluate("""() => {
-                const cascader = document.querySelector('.jx-pro-cascader');
-                if (!cascader) return 'no_cascader';
-                let el = cascader, vue = null;
-                for (let i = 0; i < 10; i++) {
-                    vue = el.__vue__;
-                    if (vue) break;
-                    el = el.parentElement;
-                    if (!el) break;
-                }
-                return vue ? {value: vue.value, checked: vue.checkedValue} : 'no_vue';
-            }""")
-            print(f"  验证Vue: {json.dumps(verify, ensure_ascii=False)}")
+        print(f"  [店铺选择-3/3] 设Vue值 + 触发面板选择...")
+        # 面板已打开，通过Vue内部状态选中店铺，然后toggle面板触发变更
+        result = self.page.evaluate("""(shopId) => {
+            const cascader = document.querySelector('.jx-pro-cascader');
+            if (!cascader) return 'no_cascader';
+            let el = cascader, vue = null;
+            for (let i = 0; i < 10; i++) {
+                vue = el.__vue__;
+                if (vue) break;
+                el = el.parentElement;
+                if (!el) break;
+            }
+            if (!vue) return 'no_vue';
+            
+            // 设值和勾选状态
+            vue.value = [shopId];
+            vue.checkedValue = [shopId];
+            
+            // 也设下级的默认值
+            if (vue.menus && vue.menus[0]) {
+                vue.menus[0] = [shopId];
+            }
+            
+            // emit事件
+            vue.$emit('input', [shopId]);
+            vue.$emit('change', [shopId]);
+            vue.$forceUpdate();
+            
+            // 关闭面板（如果有）
+            if (typeof vue.toggleDropDownVisible === 'function') {
+                vue.toggleDropDownVisible(false);
+            }
+            
+            return {value: vue.value, checked: vue.checkedValue};
+        }""", '14255039')
+        print(f"  结果: {json.dumps(result, ensure_ascii=False)}")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
