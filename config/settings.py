@@ -36,7 +36,7 @@ STYLE_LIBRARY_PATH = os.path.join(BASE_DIR, "款式库模板_v4_填尺码_最终
 PRICE_MULTIPLIER = 2  # 成本 × 2 = 供货价
 
 # RPA配置
-RPA_HEADLESS = True  # 无头模式（不显示浏览器窗口）
+RPA_HEADLESS = False  # 有头模式（用户要看浏览器）
 RPA_SLOW_MO = 200     # 操作延迟（毫秒）
 
 # 登录方式选择
