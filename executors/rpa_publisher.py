@@ -338,12 +338,13 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(1)
 
-        # 4. 用 locator 找到左边小方块点击（不依赖坐标）
+        # 4. 点击整个节点（不是子元素），因为点击事件在节点层级处理
         try:
-            self.page.locator('.el-cascader-node .el-checkbox__inner').first.click(timeout=5000)
-            result = "locator_clicked"
+            node = self.page.locator('.el-cascader-node', has_text=shop_name).first
+            node.click(timeout=5000)
+            result = "clicked"
         except:
-            result = "locator_failed"
+            result = "failed"
         print(f"  店铺: {result}")
     
     def _apply_template(self, template_name: str):
