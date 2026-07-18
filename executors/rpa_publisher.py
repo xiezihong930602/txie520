@@ -305,9 +305,9 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：完全人眼模拟，全局搜文本找元素直接点坐标，不依赖任何class"""
-        print(f"\n=== 店铺选择调试开始（全局文本搜索方案） ===")
-        print(f"[1/4] 删除默认tag...")
+        """选择店铺：直接在级联输入框输入店铺名搜索回车选中，和手动输入搜索完全一致，无需定位浮层"""
+        print(f"\n=== 店铺选择调试开始（输入搜索方案） ===")
+        print(f"[1/3] 删除默认tag...")
         self.page.evaluate("""() => {
             const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
             for (const btn of btns) {
@@ -319,107 +319,31 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        print(f"[2/4] 点击输入框开级联面板...")
+        print(f"[2/3] 点击输入框并输入「{shop_name}」搜索...")
         try:
             inp = self.page.locator('.jx-dialog input[placeholder*="请选择或输入搜索"]').first
             if inp.count() == 0:
                 inp = self.page.locator('[role="dialog"] input[placeholder*="请选择或输入搜索"]').first
+            # 点击输入框聚焦
             box = inp.bounding_box()
             if box:
                 self.page.mouse.click(box['x']+box['width']/2, box['y']+box['height']/2)
+                time.sleep(0.5)
+                # 清空已有内容
+                inp.fill("")
+                time.sleep(0.2)
+                # 输入店铺名
+                inp.type(shop_name, delay=100)
         except Exception as e:
-            print(f"  ❌ 开面板失败: {e}"); return
-        time.sleep(3)  # 足够时间等面板完全渲染
+            print(f"  ❌ 输入失败: {e}"); return
+        time.sleep(2)  # 等搜索结果加载
 
-        # 先找级联下拉弹出浮层（打开面板后弹出的最上层菜单，只在浮层内搜，不会点到页面其他地方）
-        print(f"[3/4] 查找级联下拉浮层内的「{shop_name}」选项...")
-        target_pos = self.page.evaluate("""(targetText) => {
-            // 第一步：优先找cascader下拉浮层（最上层弹出的菜单）
-            const popperSelectors = [
-                '.el-cascader-popper', '.jx-cascader-popper', 
-                '[class*="cascader"][class*="popper"]',
-                '[class*="cascader"][class*="dropdown"]',
-                '[x-placement]' // popper.js生成的浮层都有x-placement属性
-            ];
-            let popper = null;
-            for (const sel of popperSelectors) {
-                const els = Array.from(document.querySelectorAll(sel));
-                for (const el of els) {
-                    const r = el.getBoundingClientRect();
-                    // 可见的cascader浮层：高度>100，位置在弹窗居中区域(x>400，y>200)，排除左侧菜单的tooltip
-                    if (r.height > 100 && r.width > 100 && r.top > 200 && r.left > 400) {
-                        const style = window.getComputedStyle(el);
-                        if (style.position === 'absolute' || style.position === 'fixed') {
-                            popper = el;
-                            break;
-                        }
-                    }
-                }
-                if (popper) break;
-            }
-
-            const searchIn = (container) => {
-                const matches = [];
-                const allEls = container.querySelectorAll('*');
-                for (const el of allEls) {
-                    if (el.children.length > 0) continue;
-                    const txt = (el.innerText || el.textContent || '').trim();
-                    if (!txt || txt.length > 30) continue;
-                    const r = el.getBoundingClientRect();
-                    if (r.height > 10 && r.height < 50 && r.width > 20) {
-                        if (txt === targetText || txt.includes(targetText)) {
-                            matches.push({x: r.left + r.width/2, y: r.top + r.height/2, text: txt, tag: el.tagName, class: el.className});
-                        }
-                    }
-                }
-                return matches;
-            };
-
-            // 优先在浮层里搜
-            let matches = [];
-            if (popper) {
-                matches = searchIn(popper);
-            }
-
-            // 浮层里没找到再兜底，严格限制在居中弹窗区域（x:400-1500, y:300-800，排除右侧表格）
-            if (matches.length === 0) {
-                const allEls = document.querySelectorAll('*');
-                for (const el of allEls) {
-                    if (el.children.length > 0) continue;
-                    const txt = (el.innerText || el.textContent || '').trim();
-                    if (!txt || txt.length > 30) continue;
-                    const r = el.getBoundingClientRect();
-                    if (r.height > 10 && r.height < 50 && r.width > 20 && 
-                        r.left > 400 && r.left < 1500 && r.top > 300 && r.top < 800) {
-                        if (txt === targetText || txt.includes(targetText)) {
-                            matches.push({x: r.left + r.width/2, y: r.top + r.height/2, text: txt, tag: el.tagName, class: el.className});
-                        }
-                    }
-                }
-            }
-
-            // 调试输出：浮层是否找到、匹配数量
-            const debugInfo = {
-                popperFound: !!popper,
-                matchCount: matches.length
-            };
-            
-            if (matches.length > 0) {
-                matches.sort((a,b) => a.y - b.y);
-                return {found: true, pos: matches[0], debug: debugInfo};
-            }
-            return {found: false, debug: debugInfo};
-        }""", shop_name)
-        print(f"  搜索结果: {json.dumps(target_pos, ensure_ascii=False)}")
-        
-        if not target_pos.get('found'):
-            print(f"  ❌ 未找到文本「{shop_name}」，浮层找到状态：{target_pos.get('debug', {}).get('popperFound')}")
-            return
-        
-        pos = target_pos['pos']
-        print(f"[4/4] 点击匹配到的元素: ({int(pos['x'])}, {int(pos['y'])}) 文本=「{pos['text']}」")
-        self.page.mouse.click(pos['x'], pos['y'])
-        time.sleep(1.5)
+        print(f"[3/3] 按回车选中第一个搜索结果...")
+        # 按↓箭头选中第一个结果，再回车确认
+        self.page.keyboard.press("ArrowDown")
+        time.sleep(0.3)
+        self.page.keyboard.press("Enter")
+        time.sleep(1)
 
         # 验证最终结果
         final_text = self.page.evaluate("""() => {
