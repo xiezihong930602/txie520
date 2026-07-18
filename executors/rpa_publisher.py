@@ -325,8 +325,8 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.8)
 
-        # 3. 不操作UI，直接改Vue组件的value属性选中店铺
-        result = self.page.evaluate("""(name) => {
+        # 3. 直接设Vue value = Noble Boys的ID (14255039)
+        result = self.page.evaluate("""() => {
             const cascader = document.querySelector('.jx-pro-cascader');
             if (!cascader) return 'no_cascader';
             let el = cascader, vue = null;
@@ -338,30 +338,15 @@ class RpaPublisherExecutor(BaseExecutor):
             }
             if (!vue) return 'no_vue';
 
-            // 从cachedOptions/checkedNodes中找目标节点的value
-            let targetValue = null;
-            const searchOptions = (opts) => {
-                if (!opts) return;
-                for (const o of opts) {
-                    if ((o.label||'').includes(name)) { targetValue = o.value; return; }
-                    if (o.children) searchOptions(o.children);
-                }
-            };
-            searchOptions(vue.cachedOptions || vue.options || vue.checkedNodes);
-            
-            if (!targetValue) return 'value_not_found';
-
-            // 直接设value + emit事件
+            const targetValue = '14255039';  // Noble Boys shop ID
             vue.value = [targetValue];
             if (typeof vue.$emit === 'function') {
                 vue.$emit('input', [targetValue]);
                 vue.$emit('change', [targetValue]);
             }
-            if (typeof vue.$forceUpdate === 'function') {
-                vue.$forceUpdate();
-            }
-            return 'value_set:' + targetValue;
-        }""", shop_name)
+            if (typeof vue.$forceUpdate === 'function') vue.$forceUpdate();
+            return 'set';
+        }""")
         print(f"  店铺: {result}")
     
     def _apply_template(self, template_name: str):
