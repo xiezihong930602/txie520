@@ -37,8 +37,8 @@ class RpaPublisherExecutor(BaseExecutor):
         self.slow_mo = config.get("slow_mo", 200)
         self.channel = config.get("channel", None)  # "chrome" 表示用系统安装的Chrome
     
-    def execute(self, product: Product, auto_close: bool = True, auto_submit: bool = True) -> dict:
-        """执行完整上架流程"""
+    def execute(self, product: Product, auto_close: bool = False, auto_submit: bool = True) -> dict:
+        """执行完整上架流程——当前🔒冻结：只测试店铺选择"""
         try:
             self._init_browser()
             self._open_create_page()
@@ -46,12 +46,13 @@ class RpaPublisherExecutor(BaseExecutor):
             # 🔒 冻结：只测试店铺选择，其余流程全部跳过
             # ═══════════════════════════════════════════
             self._select_shop("Noble Boys")
-            print("[冻结] 店铺选择测试完成，后续流程已冻结")
-            print("[冻结] 浏览器保持打开 30 秒供检查，然后关闭")
-            time.sleep(30)
+            print("\n[冻结] 店铺选择测试完成，后续流程已冻结")
+            print("[冻结] 浏览器保持打开，你可以手动检查选中状态")
+            print("[冻结] 检查完成后按回车键关闭浏览器...")
+            input()
             return {"success": True, "data": {"skc_id": None}, "error": None}
             # ═══════════════════════════════════════════
-            # 以下全部冻结
+            # 以下全部冻结，测试通过后再解开
             self._apply_template(product.template_name)
             self._fill_variable_attributes(product)
             self._fill_basic_info(product)
@@ -304,8 +305,9 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 开面板 → 直接设vue.value + 触发更新（唯一验证通过方案）"""
-        print(f"  [店铺选择-1/3] 删除默认tag...")
+        """选择店铺：删tag → 开面板 → dump完整options结构 → 设正确层级路径"""
+        print(f"\n=== 店铺选择调试开始 ===")
+        print(f"[1/4] 删除默认tag...")
         self.page.evaluate("""() => {
             const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
             for (const btn of btns) {
@@ -317,7 +319,7 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        print(f"  [店铺选择-2/3] 开面板...")
+        print(f"[2/4] 开级联面板...")
         try:
             inp = self.page.locator('.jx-dialog input[placeholder*="请选择或输入搜索"]').first
             if inp.count() == 0:
@@ -326,32 +328,106 @@ class RpaPublisherExecutor(BaseExecutor):
             if box:
                 self.page.mouse.click(box['x']+box['width']/2, box['y']+box['height']/2)
         except Exception as e:
-            print(f"  失败: {e}"); return
-        time.sleep(1.0)
+            print(f"  ❌ 开面板失败: {e}"); return
+        time.sleep(1.5)
 
-        print(f"  [店铺选择-3/3] 设置Vue value选中Noble Boys...")
-        result = self.page.evaluate("""(shopId) => {
-            const cascader = document.querySelector('.jx-pro-cascader');
-            if (!cascader) return 'no_cascader';
+        print(f"[3/4] Dump级联选择器完整结构 + 查找目标店铺...")
+        result = self.page.evaluate("""(targetShopName) => {
+            const cascader = document.querySelector('.jx-pro-cascader, .el-cascader');
+            if (!cascader) return {error: 'no_cascader'};
             let vue = cascader.__vue__;
             if (!vue) {
                 let el = cascader;
-                for (let i=0;i<10&&!vue;i++){vue=el.__vue__;el=el.parentElement;if(!el)break;}
+                for (let i=0;i<15&&!vue;i++){vue=el.__vue__;el=el.parentElement;if(!el)break;}
             }
-            if (!vue) return 'no_vue';
+            if (!vue) return {error: 'no_vue_instance'};
             
-            // 唯一验证通过的方案：直接设value + 触发事件 + 强制更新
-            vue.value = [shopId];
-            vue.$emit('input', [shopId]);
-            vue.$emit('change', [shopId]);
+            // 递归dump所有options，同时找目标店铺的完整路径
+            const allOptions = [];
+            let targetPath = null;
+            let targetNode = null;
+            
+            const traverse = (nodes, path = [], pathLabels = []) => {
+                if (!nodes) return;
+                const nodeList = Array.isArray(nodes) ? nodes : Object.values(nodes);
+                for (const n of nodeList) {
+                    const currentPath = [...path, n.value];
+                    const currentLabels = [...pathLabels, n.label];
+                    allOptions.push({
+                        path: currentPath,
+                        labels: currentLabels,
+                        label: n.label,
+                        value: n.value,
+                        hasChildren: !!n.children,
+                        childCount: n.children ? (Array.isArray(n.children)?n.children.length:Object.keys(n.children).length) : 0
+                    });
+                    // 匹配目标店铺名
+                    if (String(n.label).trim() === targetShopName) {
+                        targetPath = currentPath;
+                        targetNode = n;
+                    }
+                    if (n.children) traverse(n.children, currentPath, currentLabels);
+                }
+            };
+            traverse(vue.options || []);
+            
+            return {
+                debug: {
+                    totalNodes: allOptions.length,
+                    first10Options: allOptions.slice(0, 15),
+                    targetFound: !!targetPath,
+                    targetPath: targetPath,
+                    targetLabels: targetPath ? allOptions.find(o => JSON.stringify(o.path) === JSON.stringify(targetPath))?.labels : null
+                },
+                action: targetPath ? 'found_target' : 'target_not_found',
+                currentValue: vue.value
+            };
+        }""", shop_name)
+        print(f"  调试结果: {json.dumps(result, ensure_ascii=False, indent=2)}")
+        
+        if not result.get('debug', {}).get('targetFound'):
+            print(f"  ❌ 未找到店铺「{shop_name}」，请检查上面dump的options列表")
+            return
+        
+        target_path = result['debug']['targetPath']
+        print(f"[4/4] 设置Vue value为层级路径: {target_path}")
+        set_result = self.page.evaluate("""(path) => {
+            const cascader = document.querySelector('.jx-pro-cascader, .el-cascader');
+            if (!cascader) return {error: 'no_cascader'};
+            let vue = cascader.__vue__;
+            if (!vue) {
+                let el = cascader;
+                for (let i=0;i<15&&!vue;i++){vue=el.__vue__;el=el.parentElement;if(!el)break;}
+            }
+            if (!vue) return {error: 'no_vue'};
+            
+            // 级联选择器必须传完整层级路径！
+            vue.value = path;
+            vue.checkedValue = path;
+            vue.$emit('input', path);
+            vue.$emit('change', path);
+            // 触发确认选择
+            if (typeof vue.handleDropdownLeave === 'function') vue.handleDropdownLeave();
             vue.$forceUpdate();
             
-            return {action:'set_vue_value', value: vue.value, checked: vue.checkedValue};
-        }""", '14255939')
-        print(f"  结果: {json.dumps(result, ensure_ascii=False)}")
+            return {
+                success: true,
+                newValue: vue.value,
+                newCheckedValue: vue.checkedValue,
+                presentText: cascader.querySelector('input')?.value || ''
+            };
+        }""", target_path)
+        print(f"  设置结果: {json.dumps(set_result, ensure_ascii=False, indent=2)}")
         time.sleep(0.8)
         # 点击空白处关闭面板
         self.page.mouse.click(10, 10)
+        time.sleep(0.5)
+        # 验证最终显示文本
+        final_text = self.page.evaluate("""() => {
+            const cascader = document.querySelector('.jx-pro-cascader, .el-cascader');
+            return cascader?.querySelector('input')?.value || '';
+        }""")
+        print(f"\n=== 最终选中结果：输入框显示文本 =「{final_text}」 ===")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
