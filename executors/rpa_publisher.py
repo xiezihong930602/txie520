@@ -325,26 +325,43 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.8)
 
-        # 3. 点击"店铺"展开L2子列表
-        self.page.evaluate("""() => {
-            const nodes = document.querySelectorAll('.el-cascader-node');
-            for (const nd of nodes) {
-                const lb = nd.querySelector('.el-cascader-node__label');
-                if (lb && (lb.innerText||'').trim() === '店铺') {
-                    lb.click();
-                    return;
-                }
+        # 3. 不操作UI，直接改Vue组件的value属性选中店铺
+        result = self.page.evaluate("""(name) => {
+            const cascader = document.querySelector('.jx-pro-cascader');
+            if (!cascader) return 'no_cascader';
+            let el = cascader, vue = null;
+            for (let i = 0; i < 10; i++) {
+                vue = el.__vue__ || (el._vnode?.component?.proxy);
+                if (vue) break;
+                el = el.parentElement;
+                if (!el) break;
             }
-        }""")
-        time.sleep(1)
+            if (!vue) return 'no_vue';
 
-        # 4. 点击整个节点（不是子元素），因为点击事件在节点层级处理
-        try:
-            node = self.page.locator('.el-cascader-node', has_text=shop_name).first
-            node.click(timeout=5000)
-            result = "clicked"
-        except:
-            result = "failed"
+            // 从cachedOptions/checkedNodes中找目标节点的value
+            let targetValue = null;
+            const searchOptions = (opts) => {
+                if (!opts) return;
+                for (const o of opts) {
+                    if ((o.label||'').includes(name)) { targetValue = o.value; return; }
+                    if (o.children) searchOptions(o.children);
+                }
+            };
+            searchOptions(vue.cachedOptions || vue.options || vue.checkedNodes);
+            
+            if (!targetValue) return 'value_not_found';
+
+            // 直接设value + emit事件
+            vue.value = [targetValue];
+            if (typeof vue.$emit === 'function') {
+                vue.$emit('input', [targetValue]);
+                vue.$emit('change', [targetValue]);
+            }
+            if (typeof vue.$forceUpdate === 'function') {
+                vue.$forceUpdate();
+            }
+            return 'value_set:' + targetValue;
+        }""", shop_name)
         print(f"  店铺: {result}")
     
     def _apply_template(self, template_name: str):
