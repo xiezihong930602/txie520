@@ -341,31 +341,24 @@ class RpaPublisherExecutor(BaseExecutor):
         print(f"  [L1-店铺] {l1}")
         time.sleep(1)
 
-        # 4. 点击label选中 + 触发Vue change
-        l2 = self.page.evaluate("""(name) => {
+        # 4. 获取label屏幕坐标 + Playwright鼠标真实点击
+        pos = self.page.evaluate("""(name) => {
             const nodes = document.querySelectorAll('.el-cascader-node');
             for (const nd of nodes) {
                 const lb = nd.querySelector('.el-cascader-node__label');
                 if (lb && (lb.innerText||'').trim().includes(name)) {
-                    // 点击label（主线）
-                    lb.click();
-                    lb.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-                    // 触发Vue change
-                    const cascader = document.querySelector('.jx-pro-cascader');
-                    if (cascader) {
-                        cascader.dispatchEvent(new Event('change', {bubbles: true}));
-                        const inp = cascader.querySelector('input');
-                        if (inp) inp.dispatchEvent(new Event('change', {bubbles: true}));
-                    }
-                    return 'clicked';
+                    const r = lb.getBoundingClientRect();
+                    return {x: r.left + r.width/2, y: r.top + r.height/2};
                 }
             }
-            return 'not_found';
+            return null;
         }""", shop_name)
-        print(f"  [店铺选择] {l2}")
         
-        if l2 == 'not_found':
-            print(f"  警告: 未找到 {shop_name}")
+        if pos:
+            self.page.mouse.click(pos['x'], pos['y'])
+            print(f"  [店铺选择] mouse_click at ({pos['x']:.0f}, {pos['y']:.0f})")
+        else:
+            print(f"  [店铺选择] not_found")
         print(f"  店铺选择: {shop_name}")
     
     def _apply_template(self, template_name: str):
