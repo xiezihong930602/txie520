@@ -98,7 +98,7 @@ class FeishuDataSource:
         self._save_token(data.get("data", {}))
 
     def _ensure_token(self):
-        """确保token有效，过期自动刷新"""
+        """确保token有效，过期自动刷新，刷新失败自动降级到应用token（无需手动授权）"""
         if time.time() >= self._token_expire:
             if self._use_tenant_token:
                 # 应用token：直接重新获取（自动续，无需用户操作）
@@ -106,7 +106,16 @@ class FeishuDataSource:
                 self._token_expire = time.time() + 7200
                 print("  [飞书] 应用token已自动刷新")
             else:
-                self._refresh_access_token()
+                # 用户token过期，尝试刷新
+                try:
+                    self._refresh_access_token()
+                    print("  [飞书] 用户token已自动刷新")
+                except Exception as e:
+                    # 刷新失败自动降级到应用token，不需要用户手动授权
+                    print(f"  [飞书] 用户token刷新失败({str(e)[:50]})，自动切换到应用token（无需手动授权）")
+                    self._use_tenant_token = True
+                    self._access_token = self._get_tenant_token()
+                    self._token_expire = time.time() + 7200
 
     def _headers(self) -> dict:
         self._ensure_token()
