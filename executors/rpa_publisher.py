@@ -43,6 +43,8 @@ class RpaPublisherExecutor(BaseExecutor):
             self._init_browser()
             self._open_create_page()
             self._select_shop("Noble Boys")
+            print("测试完成，30秒后自动关闭...")
+            time.sleep(30)
             return {"success": True, "data": {"skc_id": None}, "error": None}
         except Exception as e:
             if self.page:
