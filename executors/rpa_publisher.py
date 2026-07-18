@@ -341,24 +341,53 @@ class RpaPublisherExecutor(BaseExecutor):
         print(f"  [L1-店铺] {l1}")
         time.sleep(1)
 
-        # 4. 获取label屏幕坐标 + Playwright鼠标真实点击
-        pos = self.page.evaluate("""(name) => {
-            const nodes = document.querySelectorAll('.el-cascader-node');
-            for (const nd of nodes) {
-                const lb = nd.querySelector('.el-cascader-node__label');
-                if (lb && (lb.innerText||'').trim().includes(name)) {
-                    const r = lb.getBoundingClientRect();
-                    return {x: r.left + r.width/2, y: r.top + r.height/2};
+        # 4. 调Vue handleSuggestionClick 选中店铺
+        result = self.page.evaluate("""(name) => {
+            const cascader = document.querySelector('.jx-pro-cascader');
+            if (!cascader) return 'no_cascader';
+            let el = cascader, vue = null;
+            for (let i = 0; i < 10; i++) {
+                vue = el.__vue__ || (el._vnode?.component?.proxy);
+                if (vue) break;
+                el = el.parentElement;
+                if (!el) break;
+            }
+            if (!vue) return 'no_vue';
+            
+            // 从 suggestions / checkedNodes 中找目标
+            const suggestions = vue.suggestions || vue.checkedNodes || [];
+            let target = null;
+            for (const s of (Array.isArray(suggestions) ? suggestions : [])) {
+                if ((s.label || s.text || '').includes(name)) {
+                    target = s;
+                    break;
                 }
             }
-            return null;
+            
+            // 如果 suggestions 没有，就从DOM节点的data中找
+            if (!target) {
+                const nodes = document.querySelectorAll('.el-cascader-node');
+                for (const nd of nodes) {
+                    const lb = nd.querySelector('.el-cascader-node__label');
+                    if ((lb?.innerText||'').includes(name)) {
+                        target = {label: name, value: nd.getAttribute('data-value') || name};
+                        break;
+                    }
+                }
+            }
+            
+            if (!target) return 'target_not_found';
+            
+            // 调 handleSuggestionClick
+            if (typeof vue.handleSuggestionClick === 'function') {
+                vue.handleSuggestionClick(target);
+                return 'suggestion_clicked';
+            }
+            
+            return 'no_method';
         }""", shop_name)
-        
-        if pos:
-            self.page.mouse.click(pos['x'], pos['y'])
-            print(f"  [店铺选择] mouse_click at ({pos['x']:.0f}, {pos['y']:.0f})")
-        else:
-            print(f"  [店铺选择] not_found")
+        print(f"  [店铺选择] {result}")
+        time.sleep(0.5)
         print(f"  店铺选择: {shop_name}")
     
     def _apply_template(self, template_name: str):
