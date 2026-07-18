@@ -326,17 +326,23 @@ class RpaPublisherExecutor(BaseExecutor):
             return
         time.sleep(0.8)
 
-        # 3. 点击"店铺"展开子级
+        # 3. 诊断 + 点击"店铺"节点（可能在popper里）
         l1 = self.page.evaluate("""() => {
-            const nodes = document.querySelectorAll('.el-cascader-node');
-            for (const nd of nodes) {
-                const lb = nd.querySelector('.el-cascader-node__label');
-                if (lb && (lb.innerText||'').trim() === '店铺') {
-                    lb.click();
-                    return 'clicked';
+            // 先看所有可能的级联节点
+            const allNodes = document.querySelectorAll('.el-cascader-node, .el-cascader-menu li, [role="menuitem"]');
+            const found = [];
+            for (const nd of allNodes) {
+                const txt = (nd.innerText||'').trim().substring(0, 30);
+                const r = nd.getBoundingClientRect();
+                if (r.height > 5 || txt) {
+                    found.push({text: txt, h: Math.round(r.height)});
+                }
+                if (txt === '店铺') {
+                    nd.click();
+                    return JSON.stringify({status: 'clicked', allNodes: found});
                 }
             }
-            return 'not_found';
+            return JSON.stringify({status: 'not_found', allNodes: found, total: allNodes.length});
         }""")
         print(f"  [L1-店铺] {l1}")
         time.sleep(1)
@@ -378,10 +384,17 @@ class RpaPublisherExecutor(BaseExecutor):
             
             if (!target) return 'target_not_found';
             
-            // 调 handleSuggestionClick
+            // 调 handleSuggestionClick — 需要完整的 option 对象
             if (typeof vue.handleSuggestionClick === 'function') {
-                vue.handleSuggestionClick(target);
-                return 'suggestion_clicked';
+                // 构造完整 option 对象（el-cascader需要 checked, hasChildren等字段）
+                const opt = Object.assign({
+                    checked: true,
+                    hasChildren: false,
+                    level: 1,
+                    isLeaf: true
+                }, target);
+                vue.handleSuggestionClick(opt);
+                return JSON.stringify({status: 'suggestion_clicked', target: target.label || name});
             }
             
             return 'no_method';
