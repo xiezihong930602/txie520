@@ -348,30 +348,41 @@ class RpaPublisherExecutor(BaseExecutor):
             }
             if (!vue) return 'no_vue';
             
-            // 从 vue.checkedNodes / vue.options / vue.menus 中找到Noble Boys节点
-            const findNode = (nodes) => {
-                if (!nodes) return null;
-                for (const n of nodes) {
-                    if (String(n.value) === shopId || n.value === shopId) return n;
-                    if (n.children) {
-                        const found = findNode(n.children);
-                        if (found) return found;
+            let node = null;
+            
+            // 从面板DOM元素的__vue__获取真实Vue节点
+            const items = document.querySelectorAll('.el-cascader-menu__item');
+            for (const item of items) {
+                const input = item.querySelector('input[type="checkbox"]');
+                if (input && input.value === shopId) {
+                    // 尝试从li、label或内部元素取Vue实例
+                    node = item.__vue__ || input.__vue__;
+                    if (!node) {
+                        // 遍历父链找Vue
+                        let el = item;
+                        for (let j = 0; j < 5 && !node; j++) {
+                            node = el.__vue__;
+                            el = el.parentElement;
+                        }
                     }
+                    break;
                 }
-                return null;
-            };
+            }
             
-            let node = findNode(vue.options) || findNode(vue.cachedOptions) || findNode(vue.checkedNodes);
-            
-            // 如果options里没有（可能是懒加载），从DOM面板里直接取value
             if (!node) {
-                const inputs = document.querySelectorAll('.el-cascader-menu__item input[type="checkbox"]');
-                for (const inp of inputs) {
-                    if (inp.value === shopId) {
-                        // 构造一个简单节点
-                        const label = inp.closest('label')?.querySelector('.el-checkbox__label')?.innerText?.trim();
-                        node = { value: shopId, label: label || shopId, checked: false };
-                        break;
+                // last resort: 从vue.flatOptions中找
+                const flatOpts = vue.flatOptions || vue.$refs?.cascaderPanel?.flatOptions;
+                if (flatOpts) {
+                    node = flatOpts.find(n => String(n.value) === shopId);
+                }
+            }
+            
+            if (!node) {
+                // 再试：vue.options[0].children
+                const rootChildren = vue.options?.[0]?.children;
+                if (rootChildren) {
+                    for (const c of rootChildren) {
+                        if (String(c.value) === shopId) { node = c; break; }
                     }
                 }
             }
