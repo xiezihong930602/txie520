@@ -354,31 +354,86 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         print(f"  [诊断] 面板状态: {json.dumps(panel, ensure_ascii=False)}")
 
-        print(f"  [店铺选择-3/3] 设置Vue value...")
-        # 3. 直接设Vue value = Noble Boys的ID (14255039)
+        print(f"  [店铺选择-3/3] 展开L2+勾选Noble Boys...")
+        # 3. 点击"店铺"展开L2 → 勾选Noble Boys的checkbox
         result = self.page.evaluate("""() => {
-            const cascader = document.querySelector('.jx-pro-cascader');
-            if (!cascader) return 'no_cascader';
-            let el = cascader, vue = null;
-            for (let i = 0; i < 10; i++) {
-                vue = el.__vue__ || (el._vnode?.component?.proxy);
-                if (vue) break;
-                el = el.parentElement;
-                if (!el) break;
+            // 先找级联面板
+            const menus = document.querySelectorAll('.el-cascader-menu, [class*="cascader-menu"]');
+            let l1Menu = null;
+            for (const m of menus) {
+                const rect = m.getBoundingClientRect();
+                if (rect.width > 50 && rect.height > 50) {
+                    l1Menu = m;
+                    break;
+                }
             }
-            if (!vue) return 'no_vue';
-
-            const targetValue = '14255039';  // Noble Boys shop ID
-            const oldValue = JSON.parse(JSON.stringify(vue.value || []));
-            vue.value = [targetValue];
-            if (typeof vue.$emit === 'function') {
-                vue.$emit('input', [targetValue]);
-                vue.$emit('change', [targetValue]);
+            if (!l1Menu) return 'no_panel';
+            
+            // 在L1中找"店铺"并点击展开L2
+            const l1Nodes = l1Menu.querySelectorAll('.el-cascader-node');
+            let clicked = false;
+            for (const node of l1Nodes) {
+                const label = node.querySelector('.el-cascader-node__label');
+                if (label && label.innerText.trim() === '店铺' && !node.classList.contains('is-disabled')) {
+                    label.click();
+                    clicked = true;
+                    break;
+                }
             }
-            if (typeof vue.$forceUpdate === 'function') vue.$forceUpdate();
-            return {old: oldValue, new: vue.value, hasEmit: typeof vue.$emit === 'function'};
+            if (!clicked) return 'no_shop_l1';
+            
+            // 等L2渲染(200ms)
+            return 'expanded';
         }""")
-        print(f"  店铺Vue: {json.dumps(result, ensure_ascii=False)}")
+        time.sleep(1.0)
+        print(f"  L1展开: {result}")
+        
+        # 4. 在L2找到Noble Boys, 点击左边小方块
+        result2 = self.page.evaluate("""() => {
+            const menus = document.querySelectorAll('.el-cascader-menu, [class*="cascader-menu"]');
+            for (const m of menus) {
+                const rect = m.getBoundingClientRect();
+                if (rect.width > 50 && rect.height > 50) {
+                    const nodes = m.querySelectorAll('.el-cascader-node');
+                    for (const node of nodes) {
+                        const label = node.querySelector('.el-cascader-node__label');
+                        if (label && label.innerText.trim() === 'Noble Boys') {
+                            // 找左边小方块 .el-checkbox__inner
+                            const inner = node.querySelector('.el-checkbox__inner');
+                            if (inner) {
+                                // 获取坐标，用真实鼠标事件点击
+                                const r = inner.getBoundingClientRect();
+                                return {found: true, x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2), w: Math.round(r.width), h: Math.round(r.height)};
+                            }
+                            return {found: true, no_checkbox: true};
+                        }
+                    }
+                }
+            }
+            return {found: false};
+        }""")
+        print(f"  Noble Boys位置: {json.dumps(result2, ensure_ascii=False)}")
+        
+        if result2.get('found') and not result2.get('no_checkbox'):
+            # 用page.mouse.click真实点击小方块
+            self.page.mouse.click(result2['x'], result2['y'])
+            time.sleep(0.5)
+            print(f"  已点击小方块 ({result2['x']}, {result2['y']})")
+            
+            # 再验证：Vue value是否正确
+            verify = self.page.evaluate("""() => {
+                const cascader = document.querySelector('.jx-pro-cascader');
+                if (!cascader) return 'no_cascader';
+                let el = cascader, vue = null;
+                for (let i = 0; i < 10; i++) {
+                    vue = el.__vue__ || (el._vnode?.component?.proxy);
+                    if (vue) break;
+                    el = el.parentElement;
+                    if (!el) break;
+                }
+                return vue ? {value: vue.value, checked: vue.checkedValue} : 'no_vue';
+            }""")
+            print(f"  验证Vue: {json.dumps(verify, ensure_ascii=False)}")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
