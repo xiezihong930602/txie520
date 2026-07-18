@@ -325,7 +325,20 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.8)
 
-        # 3. 勾选店铺名左边的checkbox
+        # 3. 点击"店铺"展开L2子列表
+        self.page.evaluate("""() => {
+            const nodes = document.querySelectorAll('.el-cascader-node');
+            for (const nd of nodes) {
+                const lb = nd.querySelector('.el-cascader-node__label');
+                if (lb && (lb.innerText||'').trim() === '店铺') {
+                    lb.click();
+                    return;
+                }
+            }
+        }""")
+        time.sleep(1)
+
+        # 4. 勾选 Noble Boys 的 checkbox
         result = self.page.evaluate("""(name) => {
             const nodes = document.querySelectorAll('.el-cascader-node');
             for (const nd of nodes) {
