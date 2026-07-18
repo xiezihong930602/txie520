@@ -42,8 +42,17 @@ class RpaPublisherExecutor(BaseExecutor):
         try:
             self._init_browser()
             self._open_create_page()
-            self._apply_template(product.template_name)
+            # ═══════════════════════════════════════════
+            # 🔒 冻结：只测试店铺选择，其余流程全部跳过
+            # ═══════════════════════════════════════════
             self._select_shop("Noble Boys")
+            print("[冻结] 店铺选择测试完成，后续流程已冻结")
+            print("[冻结] 浏览器保持打开 30 秒供检查，然后关闭")
+            time.sleep(30)
+            return {"success": True, "data": {"skc_id": None}, "error": None}
+            # ═══════════════════════════════════════════
+            # 以下全部冻结
+            self._apply_template(product.template_name)
             self._fill_variable_attributes(product)
             self._fill_basic_info(product)
             self._fill_sku_info(product)
@@ -296,6 +305,7 @@ class RpaPublisherExecutor(BaseExecutor):
     
     def _select_shop(self, shop_name: str):
         """选择店铺：删tag → 打开面板 → 勾选checkbox"""
+        print(f"  [店铺选择-1/3] 删除默认tag...")
         # 1. 删除默认tag
         self.page.evaluate("""() => {
             const closeBtns = document.querySelectorAll('.jx-tag__close, .el-tag__close, [class*="tag"] [class*="close"]');
@@ -303,12 +313,14 @@ class RpaPublisherExecutor(BaseExecutor):
                 const rect = btn.getBoundingClientRect();
                 if (rect.width > 5 && rect.height > 5 && rect.width < 30 && rect.top < 200) {
                     btn.click();
-                    return;
+                    return 'deleted';
                 }
             }
+            return 'no_tag';
         }""")
         time.sleep(0.3)
 
+        print(f"  [店铺选择-2/3] 打开级联面板...")
         # 2. 打开面板
         self.page.evaluate("""() => {
             const dlgs = document.querySelectorAll('.jx-dialog, .el-dialog, [role="dialog"]');
@@ -318,13 +330,31 @@ class RpaPublisherExecutor(BaseExecutor):
                 for (const inp of inputs) {
                     if ((inp.placeholder||'').includes('请选择或输入搜索')) {
                         inp.click();
-                        return;
+                        return 'clicked';
                     }
                 }
             }
+            return 'no_input';
         }""")
         time.sleep(0.8)
 
+        # 诊断：看面板是否打开
+        panel = self.page.evaluate("""() => {
+            const menus = document.querySelectorAll('.el-cascader-menu, [class*="cascader-menu"]');
+            for (const m of menus) {
+                const rect = m.getBoundingClientRect();
+                if (rect.width > 50 && rect.height > 50) {
+                    const nodes = m.querySelectorAll('.el-cascader-node');
+                    const vals = [];
+                    nodes.forEach(n => { const lbl = n.querySelector('.el-cascader-node__label'); if (lbl) vals.push(lbl.innerText.trim()); });
+                    return {found: true, nodes: vals};
+                }
+            }
+            return {found: false};
+        }""")
+        print(f"  [诊断] 面板状态: {json.dumps(panel, ensure_ascii=False)}")
+
+        print(f"  [店铺选择-3/3] 设置Vue value...")
         # 3. 直接设Vue value = Noble Boys的ID (14255039)
         result = self.page.evaluate("""() => {
             const cascader = document.querySelector('.jx-pro-cascader');
@@ -339,15 +369,16 @@ class RpaPublisherExecutor(BaseExecutor):
             if (!vue) return 'no_vue';
 
             const targetValue = '14255039';  // Noble Boys shop ID
+            const oldValue = JSON.parse(JSON.stringify(vue.value || []));
             vue.value = [targetValue];
             if (typeof vue.$emit === 'function') {
                 vue.$emit('input', [targetValue]);
                 vue.$emit('change', [targetValue]);
             }
             if (typeof vue.$forceUpdate === 'function') vue.$forceUpdate();
-            return 'set';
+            return {old: oldValue, new: vue.value, hasEmit: typeof vue.$emit === 'function'};
         }""")
-        print(f"  店铺: {result}")
+        print(f"  店铺Vue: {json.dumps(result, ensure_ascii=False)}")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
