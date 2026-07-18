@@ -37,22 +37,12 @@ class RpaPublisherExecutor(BaseExecutor):
         self.slow_mo = config.get("slow_mo", 200)
         self.channel = config.get("channel", None)  # "chrome" 表示用系统安装的Chrome
     
-    def execute(self, product: Product, auto_close: bool = False, auto_submit: bool = True) -> dict:
-        """执行完整上架流程——当前🔒冻结：只测试店铺选择"""
+    def execute(self, product: Product, auto_close: bool = True, auto_submit: bool = True) -> dict:
+        """执行完整上架流程"""
         try:
             self._init_browser()
             self._open_create_page()
-            # ═══════════════════════════════════════════
-            # 🔒 冻结：只测试店铺选择，其余流程全部跳过
-            # ═══════════════════════════════════════════
             self._select_shop("Noble Boys")
-            print("\n[冻结] 店铺选择测试完成，后续流程已冻结")
-            print("[冻结] 浏览器保持打开，你可以手动检查选中状态")
-            print("[冻结] 检查完成后按回车键关闭浏览器...")
-            input()
-            return {"success": True, "data": {"skc_id": None}, "error": None}
-            # ═══════════════════════════════════════════
-            # 以下全部冻结，测试通过后再解开
             self._apply_template(product.template_name)
             self._fill_variable_attributes(product)
             self._fill_basic_info(product)
@@ -343,7 +333,10 @@ class RpaPublisherExecutor(BaseExecutor):
         self.page.keyboard.press("ArrowDown")
         time.sleep(0.3)
         self.page.keyboard.press("Enter")
-        time.sleep(1)
+        time.sleep(0.5)
+        # 点击空白区域确认选择，关闭浮层
+        self.page.mouse.click(10, 10)
+        time.sleep(0.8)
 
         # 验证最终结果
         final_text = self.page.evaluate("""() => {
