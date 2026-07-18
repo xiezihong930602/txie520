@@ -1,0 +1,8 @@
+browser_data/
+browser_drivers/
+chrome_rpa/
+*.json
+!package.json
+__pycache__/
+*.pyc
+.DS_Store

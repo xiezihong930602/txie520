@@ -1,0 +1,12 @@
+# 依赖包
+# 浏览器自动化
+playwright>=1.40.0
+
+# Excel处理
+openpyxl>=3.1.0
+
+# 飞书多维表格
+# lark-oapi>=1.2.0  # 后续接入飞书时安装
+
+# 工具库
+python-dotenv>=1.0.0
