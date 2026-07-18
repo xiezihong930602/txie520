@@ -304,7 +304,7 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → Vue toggle开面板 → 勾选checkbox"""
+        """选择店铺：删tag → 点input开面板 → 键盘选中"""
         print(f"  [店铺选择-1/3] 删除默认tag...")
         self.page.evaluate("""() => {
             const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
@@ -317,65 +317,38 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        print(f"  [店铺选择-2/3] Vue toggle开面板...")
-        # 用Vue API打开面板，不点input，避免focus/blur问题
-        opened = self.page.evaluate("""() => {
-            const cascader = document.querySelector('.jx-pro-cascader');
-            if (!cascader) return 'no_cascader';
-            let el = cascader, vue = null;
-            for (let i = 0; i < 10 && !vue; i++) {
-                vue = el.__vue__; el = el.parentElement;
-                if (!el) break;
-            }
-            if (!vue || typeof vue.toggleDropDownVisible !== 'function') return 'no_toggle';
-            vue.toggleDropDownVisible(true);
-            return 'opened';
-        }""")
-        print(f"  面板: {opened}")
+        print(f"  [店铺选择-2/3] 点击input开面板...")
+        try:
+            inp = self.page.locator('.jx-dialog input[placeholder*="请选择或输入搜索"]').first
+            if inp.count() == 0:
+                inp = self.page.locator('[role="dialog"] input[placeholder*="请选择或输入搜索"]').first
+            inp.click(timeout=3000)
+        except Exception as e:
+            print(f"  打开失败: {e}"); return
         time.sleep(0.8)
 
-        print(f"  [店铺选择-3/3] 勾选...")
-        # 尝试点击label文字
-        result = 'not_tried'
-        try:
-            label_el = self.page.locator('.el-cascader-menu__item .el-checkbox__label', has_text=shop_name).first
-            if label_el.count() > 0:
-                label_el.click(timeout=3000)
-                result = 'clicked_label'
-        except:
-            pass
-        
-        if result == 'not_tried':
-            try:
-                self.page.locator('.el-cascader-menu__item').filter(has_text=shop_name).first.click(timeout=3000)
-                result = 'clicked_item'
-            except Exception as e:
-                result = f'error: {e}'
+        print(f"  [店铺选择-3/3] 键盘操作...")
+        # Tab进面板 → 找Noble Boys → 空格勾选 → Enter确认
+        self.page.keyboard.press("Tab")      # 进入面板
+        time.sleep(0.2)
+        # ArrowDown直到找到目标（最多10次）
+        for i in range(10):
+            active = self.page.evaluate("""() => {
+                const el = document.activeElement;
+                return el ? (el.innerText || el.value || el.getAttribute('aria-label') || '').trim() : '';
+            }""")
+            print(f"  [{i}] active: '{active}'")
+            if shop_name in active:
+                self.page.keyboard.press("Space")  # 空格勾选
+                time.sleep(0.2)
+                self.page.keyboard.press("Enter")  # Enter确认
+                result = f'keyboard_selected'
+                break
+            self.page.keyboard.press("ArrowDown")
+            time.sleep(0.15)
+        else:
+            result = 'not_found_in_panel'
         print(f"  结果: {result}")
-        
-        if result.startswith('clicked'):
-            time.sleep(0.5)
-            verify = self.page.evaluate("""() => {
-                const cascader = document.querySelector('.jx-pro-cascader');
-                if (!cascader) return 'no_cascader';
-                let el = cascader, vue = null;
-                for (let i = 0; i < 10 && !vue; i++) {
-                    vue = el.__vue__; el = el.parentElement; if (!el) break;
-                }
-                return vue ? {value: vue.value, checked: vue.checkedValue} : 'no_vue';
-            }""")
-            print(f"  验证Vue: {json.dumps(verify, ensure_ascii=False)}")
-            # 关闭面板
-            self.page.evaluate("""() => {
-                const cascader = document.querySelector('.jx-pro-cascader');
-                let el = cascader, vue = null;
-                for (let i = 0; i < 10 && !vue; i++) {
-                    vue = el.__vue__; el = el.parentElement; if (!el) break;
-                }
-                if (vue && typeof vue.toggleDropDownVisible === 'function') {
-                    vue.toggleDropDownVisible(false);
-                }
-            }""")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
