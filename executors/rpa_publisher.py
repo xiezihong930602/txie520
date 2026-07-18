@@ -304,19 +304,49 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        # 2. 点击级联器 div 打开面板(force绕过overlay) + 聚焦(禁止滚屏)
-        self.page.locator('.jx-pro-cascader').first.click(force=True)
-        self.page.evaluate("""() => {
-            const inp = document.querySelector('.jx-pro-cascader input');
-            if (inp) { inp.focus({preventScroll: true}); inp.select(); }
-        }""")
-        time.sleep(0.5)
-
-        # 3. 键盘打字
-        self.page.keyboard.type(shop_name, delay=50)
+        # 2. 纯JS操作级联器：dispatch click → focus → set value → trigger search
+        result = self.page.evaluate("""(name) => {
+            const cascader = document.querySelector('.jx-pro-cascader');
+            if (!cascader) return 'no_cascader';
+            
+            const inp = cascader.querySelector('input');
+            if (!inp) return 'no_input';
+            
+            // 获取Vue实例
+            let el = cascader, vue = null;
+            for (let i = 0; i < 10; i++) {
+                vue = el.__vue__ || (el._vnode?.component?.proxy);
+                if (vue) break;
+                el = el.parentElement;
+                if (!el) break;
+            }
+            
+            // 1) click事件触发面板打开
+            cascader.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+            cascader.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+            
+            // 2) 聚焦输入框（禁止滚屏）
+            inp.focus({preventScroll: true});
+            
+            // 3) 设置值并触发搜索
+            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(inp, name);
+            inp.dispatchEvent(new Event('input', {bubbles: true}));
+            inp.dispatchEvent(new Event('change', {bubbles: true}));
+            
+            // 4) Vue搜索
+            if (vue) {
+                if (typeof vue.handleInput === 'function') vue.handleInput(name);
+                if (typeof vue.handleQueryChange === 'function') vue.handleQueryChange(name);
+                if (typeof vue.filterHandler === 'function') vue.filterHandler(name);
+            }
+            
+            return 'js_done';
+        }""", shop_name)
+        print(f"  [级联触发] {result}")
         time.sleep(1.5)
 
-        # 4. 点击出现的店铺名
+        # 3. 点击出现的店铺名
         result = self.page.evaluate("""(name) => {
             const nodes = document.querySelectorAll('.el-cascader-node');
             for (const nd of nodes) {
