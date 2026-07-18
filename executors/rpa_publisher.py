@@ -304,7 +304,7 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 点input开面板 → 键盘选中"""
+        """选择店铺：删tag → 点input → 鼠标移动到checkbox点击"""
         print(f"  [店铺选择-1/3] 删除默认tag...")
         self.page.evaluate("""() => {
             const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
@@ -322,32 +322,57 @@ class RpaPublisherExecutor(BaseExecutor):
             inp = self.page.locator('.jx-dialog input[placeholder*="请选择或输入搜索"]').first
             if inp.count() == 0:
                 inp = self.page.locator('[role="dialog"] input[placeholder*="请选择或输入搜索"]').first
-            inp.click(timeout=3000)
+            # 获取input的bounding box
+            box = inp.bounding_box()
+            if box:
+                # 鼠标移动到input并点击
+                self.page.mouse.click(box['x'] + box['width']/2, box['y'] + box['height']/2)
         except Exception as e:
             print(f"  打开失败: {e}"); return
-        time.sleep(0.8)
+        time.sleep(1.0)
 
-        print(f"  [店铺选择-3/3] 键盘操作...")
-        # Tab进面板 → 找Noble Boys → 空格勾选 → Enter确认
-        self.page.keyboard.press("Tab")      # 进入面板
-        time.sleep(0.2)
-        # ArrowDown直到找到目标（最多10次）
-        for i in range(10):
-            active = self.page.evaluate("""() => {
-                const el = document.activeElement;
-                return el ? (el.innerText || el.value || el.getAttribute('aria-label') || '').trim() : '';
-            }""")
-            print(f"  [{i}] active: '{active}'")
-            if shop_name in active:
-                self.page.keyboard.press("Space")  # 空格勾选
-                time.sleep(0.2)
-                self.page.keyboard.press("Enter")  # Enter确认
-                result = f'keyboard_selected'
-                break
-            self.page.keyboard.press("ArrowDown")
-            time.sleep(0.15)
+        print(f"  [店铺选择-3/3] 找checkbox位置并鼠标点击...")
+        # 用JS获取Noble Boys的checkbox小方块坐标
+        pos = self.page.evaluate("""(shop) => {
+            // 搜索所有可能的父容器
+            const containers = document.querySelectorAll('.el-cascader-panel, .el-cascader-menu, .el-cascader__dropdown, [class*="cascader"][class*="popper"], .el-popper');
+            for (const c of containers) {
+                const rect = c.getBoundingClientRect();
+                if (rect.width < 100 || rect.height < 50) continue;
+                const items = c.querySelectorAll('.el-cascader-menu__item, [class*="menu__item"]');
+                for (const item of items) {
+                    const label = item.querySelector('.el-checkbox__label');
+                    if (label && label.innerText.trim() === shop) {
+                        const inner = item.querySelector('.el-checkbox__inner');
+                        if (inner) {
+                            const r = inner.getBoundingClientRect();
+                            return {x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2)};
+                        }
+                    }
+                }
+            }
+            // 兜底：搜索整个页面
+            const allItems = document.querySelectorAll('.el-cascader-menu__item');
+            for (const item of allItems) {
+                const label = item.querySelector('.el-checkbox__label');
+                if (label && label.innerText.trim() === shop) {
+                    const inner = item.querySelector('.el-checkbox__inner');
+                    if (inner) {
+                        const r = inner.getBoundingClientRect();
+                        return {x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2)};
+                    }
+                }
+            }
+            return null;
+        }""", shop_name)
+        print(f"  checkbox坐标: {pos}")
+        
+        if pos:
+            self.page.mouse.click(pos['x'], pos['y'])
+            time.sleep(0.5)
+            result = 'mouse_clicked'
         else:
-            result = 'not_found_in_panel'
+            result = 'pos_not_found'
         print(f"  结果: {result}")
     
     def _apply_template(self, template_name: str):
