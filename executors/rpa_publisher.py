@@ -304,7 +304,7 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：删tag → 打开面板（确保focus）→ 勾选checkbox"""
+        """选择店铺：删tag → Vue toggle开面板 → 勾选checkbox"""
         print(f"  [店铺选择-1/3] 删除默认tag...")
         self.page.evaluate("""() => {
             const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
@@ -317,22 +317,26 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.3)
 
-        print(f"  [店铺选择-2/3] Playwright点击输入框打开面板...")
-        # 用Playwright真实点击（带focus），不是JS click
-        try:
-            # 找弹窗内placeholder含"请选择或输入搜索"的input
-            inp = self.page.locator('.jx-dialog input[placeholder*="请选择或输入搜索"]').first
-            if inp.count() == 0:
-                inp = self.page.locator('[role="dialog"] input[placeholder*="请选择或输入搜索"]').first
-            inp.click(timeout=3000)
-        except Exception as e:
-            print(f"  打开面板失败: {e}")
-            return
+        print(f"  [店铺选择-2/3] Vue toggle开面板...")
+        # 用Vue API打开面板，不点input，避免focus/blur问题
+        opened = self.page.evaluate("""() => {
+            const cascader = document.querySelector('.jx-pro-cascader');
+            if (!cascader) return 'no_cascader';
+            let el = cascader, vue = null;
+            for (let i = 0; i < 10 && !vue; i++) {
+                vue = el.__vue__; el = el.parentElement;
+                if (!el) break;
+            }
+            if (!vue || typeof vue.toggleDropDownVisible !== 'function') return 'no_toggle';
+            vue.toggleDropDownVisible(true);
+            return 'opened';
+        }""")
+        print(f"  面板: {opened}")
         time.sleep(0.8)
 
-        print(f"  [店铺选择-3/3] Playwright点击checkbox...")
+        print(f"  [店铺选择-3/3] 勾选...")
+        # 尝试点击label文字
         result = 'not_tried'
-        # 方式1: 点击label文字
         try:
             label_el = self.page.locator('.el-cascader-menu__item .el-checkbox__label', has_text=shop_name).first
             if label_el.count() > 0:
@@ -341,30 +345,37 @@ class RpaPublisherExecutor(BaseExecutor):
         except:
             pass
         
-        # 方式2: 点击整个li
         if result == 'not_tried':
             try:
-                item = self.page.locator('.el-cascader-menu__item').filter(has_text=shop_name).first
-                item.click(timeout=3000)
+                self.page.locator('.el-cascader-menu__item').filter(has_text=shop_name).first.click(timeout=3000)
                 result = 'clicked_item'
             except Exception as e:
                 result = f'error: {e}'
         print(f"  结果: {result}")
         
         if result.startswith('clicked'):
-            time.sleep(0.3)
+            time.sleep(0.5)
             verify = self.page.evaluate("""() => {
                 const cascader = document.querySelector('.jx-pro-cascader');
                 if (!cascader) return 'no_cascader';
                 let el = cascader, vue = null;
                 for (let i = 0; i < 10 && !vue; i++) {
-                    vue = el.__vue__;
-                    el = el.parentElement;
-                    if (!el) break;
+                    vue = el.__vue__; el = el.parentElement; if (!el) break;
                 }
                 return vue ? {value: vue.value, checked: vue.checkedValue} : 'no_vue';
             }""")
             print(f"  验证Vue: {json.dumps(verify, ensure_ascii=False)}")
+            # 关闭面板
+            self.page.evaluate("""() => {
+                const cascader = document.querySelector('.jx-pro-cascader');
+                let el = cascader, vue = null;
+                for (let i = 0; i < 10 && !vue; i++) {
+                    vue = el.__vue__; el = el.parentElement; if (!el) break;
+                }
+                if (vue && typeof vue.toggleDropDownVisible === 'function') {
+                    vue.toggleDropDownVisible(false);
+                }
+            }""")
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
