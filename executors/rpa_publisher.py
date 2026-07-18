@@ -304,23 +304,29 @@ class RpaPublisherExecutor(BaseExecutor):
         """)
         time.sleep(0.3)
 
-        # 2. 点击级联输入框（不滚屏），然后键盘输入
-        self.page.locator('.jx-pro-cascader input').first.click(force=True, no_wait_after=True)
-        time.sleep(0.5)
-
-        # 强制聚焦 + 清空，确保键盘输入进到级联搜索框
+        # 2. 直接填值触发搜索 + 打开面板
         self.page.evaluate("""(name) => {
             const inp = document.querySelector('.jx-pro-cascader input');
-            if (inp) {
-                inp.focus();
-                inp.value = '';
-                inp.dispatchEvent(new Event('input', {bubbles: true}));
+            if (!inp) return;
+            // 获取Vue实例触发面板
+            const cascader = document.querySelector('.jx-pro-cascader');
+            let vue = null, el = cascader;
+            for (let i = 0; i < 10; i++) {
+                vue = el.__vue__ || (el._vnode?.component?.proxy);
+                if (vue) break;
+                el = el.parentElement;
+                if (!el) break;
+            }
+            // 设值并触发搜索
+            inp.value = name;
+            inp.dispatchEvent(new Event('input', {bubbles: true}));
+            inp.dispatchEvent(new Event('change', {bubbles: true}));
+            inp.dispatchEvent(new Event('compositionend', {bubbles: true}));
+            // 如果Vue实例有 handleQueryChange 调用之
+            if (vue && typeof vue.handleQueryChange === 'function') {
+                vue.handleQueryChange(name);
             }
         }""", shop_name)
-        time.sleep(0.3)
-
-        # 3. 键盘输入过滤
-        self.page.keyboard.type(shop_name, delay=60)
         time.sleep(1.5)
 
         # 4. 暴力点击节点内所有可点元素
