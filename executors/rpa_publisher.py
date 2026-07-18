@@ -338,21 +338,26 @@ class RpaPublisherExecutor(BaseExecutor):
         }""")
         time.sleep(0.8)
 
-        # 诊断：看面板是否打开
-        panel = self.page.evaluate("""() => {
-            const menus = document.querySelectorAll('.el-cascader-menu, [class*="cascader-menu"]');
+        # 诊断：dump面板内部完整HTML
+        panel_html = self.page.evaluate("""() => {
+            const menus = document.querySelectorAll('.el-cascader-menu, [class*="cascader-menu"], .el-cascader-panel, [class*="popper"]');
             for (const m of menus) {
                 const rect = m.getBoundingClientRect();
-                if (rect.width > 50 && rect.height > 50) {
-                    const nodes = m.querySelectorAll('.el-cascader-node');
-                    const vals = [];
-                    nodes.forEach(n => { const lbl = n.querySelector('.el-cascader-node__label'); if (lbl) vals.push(lbl.innerText.trim()); });
-                    return {found: true, nodes: vals};
+                if (rect.width > 50 && rect.height > 50 && rect.top > 50) {
+                    return m.outerHTML.substring(0, 3000);
                 }
             }
-            return {found: false};
+            // 兜底：找所有可见且有内容的浮层
+            const all = document.querySelectorAll('[class*="popper"], [class*="dropdown"], [class*="menu"]');
+            for (const el of all) {
+                const rect = el.getBoundingClientRect();
+                if (rect.width > 100 && rect.height > 50 && el.innerText.includes('Noble')) {
+                    return el.outerHTML.substring(0, 3000);
+                }
+            }
+            return 'no_panel_html';
         }""")
-        print(f"  [诊断] 面板状态: {json.dumps(panel, ensure_ascii=False)}")
+        print(f"  [面板HTML] {panel_html[:2000]}")
 
         print(f"  [店铺选择-3/3] 展开L2+勾选Noble Boys...")
         # 3. 点击"店铺"展开L2 → 勾选Noble Boys的checkbox
