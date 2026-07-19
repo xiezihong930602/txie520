@@ -1414,8 +1414,45 @@ class RpaPublisherExecutor(BaseExecutor):
         if chosen:
             print(f"  尺码表{index+1}: {style_name}")
         else:
-            print(f"  警告: 未找到尺码表{index+1}: {style_name}")
+            print(f"  未找到尺码表{index+1}: {style_name}，自动创建...")
             self.page.keyboard.press("Escape")
+            time.sleep(0.5)
+            try:
+                cat_path = self._read_product_category()
+                print(f"  读取到类目: {cat_path or '(空，将自动推断)'}")
+            except Exception as e:
+                print(f"  读取类目失败: {e}")
+                cat_path = ""
+            try:
+                sz_page = self.context.new_page()
+                sz_page.goto("https://erp.91miaoshou.com/pddkj/move_collect/template_management/sizeChart",
+                             wait_until="domcontentloaded")
+                time.sleep(4)
+                from utils.sizetable_creator import create_sizetable_for_style
+                sz_ok = create_sizetable_for_style(sz_page, style_name, cat_path)
+                sz_page.close()
+            except Exception as e:
+                print(f"  创建尺码表异常: {e}")
+                sz_ok = False
+                try: sz_page.close()
+                except: pass
+            if sz_ok:
+                time.sleep(1)
+                self.page.bring_to_front()
+                select_container = self.page.locator(".size-template-select-container").nth(index)
+                select_container.click()
+                time.sleep(1.5)
+                search_input = select_container.locator("input").first
+                if search_input.is_visible():
+                    search_input.click()
+                    time.sleep(0.2)
+                self.page.keyboard.press("Control+A")
+                time.sleep(0.1)
+                self.page.keyboard.type(style_name)
+                time.sleep(1.2)
+                self.page.evaluate(f"(name) => {{ const all = document.querySelectorAll('li, [class*=\"dropdown-item\"]'); for (const item of all) {{ if ((item.innerText||'').includes(name) && item.getBoundingClientRect().height>10) {{ item.click(); break; }} }} }}", style_name)
+                time.sleep(0.5)
+                print(f"  尺码表{index+1}: {style_name} (已创建)")
     
     def _check_key_display_parts(self, top_name: str, bottom_name: str):
         """勾选重点展示部件：多选下拉，点选项勾选"""
