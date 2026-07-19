@@ -1421,7 +1421,20 @@ class RpaPublisherExecutor(BaseExecutor):
             if sz_ok:
                 time.sleep(1)
                 self.page.bring_to_front()
+                # 点同步刷新尺码表列表
+                try:
+                    self.page.locator("button:has-text('同步'), span:has-text('同步')").first.click(timeout=3000)
+                    time.sleep(2)
+                except:
+                    pass
                 select_container = self.page.locator(".size-template-select-container").nth(index)
+                try:
+                    select_container.wait_for(state="visible", timeout=5000)
+                except:
+                    print(f"  警告: 尺码表选择器{index+1}不可见，重试中")
+                    self.page.bring_to_front()
+                    time.sleep(2)
+                    select_container = self.page.locator(".size-template-select-container").nth(index)
                 select_container.click()
                 time.sleep(1.5)
                 search_input = select_container.locator("input").first
