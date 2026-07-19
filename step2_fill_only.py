@@ -138,27 +138,25 @@ def fill_one(page, style_name, cat_path, size_category):
 
     # ── 8. 粘贴导入 ──
     try:
-        # 先写数据到 Windows 剪贴板
-        import subprocess, io
-        proc = subprocess.Popen(
-            ['clip'], stdin=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            shell=True
-        )
-        proc.communicate(input=paste_text.encode('utf-16-le'))
-        proc.wait()
-        
         page.get_by_role("button", name="Excel快速编辑").click()
         time.sleep(0.5)
         page.get_by_role("menuitem", name="第二步：粘贴导入").click()
         time.sleep(1)
-        # 点 textarea 后 Ctrl+V
-        page.locator("[role=\"dialog\"] textarea, textarea").first.click()
-        time.sleep(0.3)
-        page.keyboard.press("Control+v")
+        # JS 直接写 textarea，不走剪贴板
+        page.evaluate("""(data) => {
+            const ta = document.querySelector('[role="dialog"] textarea, textarea');
+            if (!ta) return 'no textarea';
+            ta.focus();
+            // 原生setter触发Vue响应
+            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+            nativeSetter.call(ta, data);
+            ta.dispatchEvent(new Event('input', {bubbles: true}));
+            ta.dispatchEvent(new Event('change', {bubbles: true}));
+            return 'ok';
+        }""", paste_text)
         time.sleep(0.5)
         s("7_pasted")
-        print("  [OK] 粘贴(导入弹窗内)")
+        print("  [OK] 粘贴(JS写入)")
     except Exception as e:
         print(f"  [FAIL] 粘贴: {e}")
         s("7_paste_fail")
