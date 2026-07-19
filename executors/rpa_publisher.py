@@ -45,8 +45,11 @@ class RpaPublisherExecutor(BaseExecutor):
             self._open_create_page()
             self._select_shop("Noble Boys")
             self._apply_template(product.template_name)
-            # 模板选完后立刻读类目（此时在"类别&属性"标签页）
+            # 模板选完后立刻读类目（需等渲染+切到类别&属性标签页）
+            time.sleep(2)
+            self._switch_tab("类别&属性")
             self._cached_category = self._read_product_category()
+            print(f"  缓存类目: {self._cached_category}")
             self._fill_variable_attributes(product)
             self._fill_basic_info(product)
             self._fill_sku_info(product)
