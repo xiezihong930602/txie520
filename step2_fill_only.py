@@ -117,6 +117,10 @@ def fill_one(page, style_name, cat_path, size_category):
             short = txt.split()[0] if txt.split() else txt
             if short in remaining:
                 try:
+                    # 先勾选该行checkbox解锁input
+                    cb = item.locator(".jx-checkbox__inner").first
+                    cb.click(force=True, timeout=1000)
+                    time.sleep(0.1)
                     inputs = item.locator("input[type=\"text\"]").all()
                     cols = data_map[short]
                     for i in range(len(cols)):
