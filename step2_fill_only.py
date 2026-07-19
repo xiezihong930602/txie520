@@ -136,37 +136,39 @@ def fill_one(page, style_name, cat_path, size_category):
     s("6_sizes")
     print(f"  [OK] 尺码勾选: {len(result.get('checked',[]))}/{len(sizes)} (已勾:{result.get('checked',[])}, 剩余:{result.get('remaining',[])})")
 
-    # ── 8. 粘贴导入 ──
-    try:
-        page.get_by_role("button", name="Excel快速编辑").click()
-        time.sleep(0.5)
-        page.get_by_role("menuitem", name="第一步：复制模板").click()
-        time.sleep(0.5)
-        page.get_by_role("menuitem", name="第二步：粘贴导入").click()
-        time.sleep(1.5)
-
-        # Browser Clipboard API: 写入 paste_text → Ctrl+V
-        page.evaluate("""async (data) => {
-            try {
-                await navigator.clipboard.writeText(data);
-                return 'clipboard_ok';
-            } catch(e) {
-                return 'clipboard_err: ' + e.message;
+    # ── 8. 逐行填写数据(放弃粘贴导入) ──
+    # 跳过"复制模板""粘贴导入"菜单 → 直接在弹窗内的表格input里填数据
+    # data_rows 格式: [[size, col1, col2, col3, col4], ...]
+    # 滚到底然后逐行填入
+    filled = page.evaluate("""(rows) => {
+        const scroller = document.querySelector('.vue-recycle-scroller');
+        if (!scroller) return 'no scroller';
+        scroller.scrollTop = scroller.scrollHeight;
+        const start = Date.now();
+        while (Date.now() - start < 1500) { /* wait render */ }
+        
+        const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
+        let n = 0;
+        for (const item of items) {
+            const txt = item.innerText.trim();
+            for (const row of rows) {
+                if (txt.startsWith(String(row[0]))) {
+                    const inputs = item.querySelectorAll('input[type="text"]');
+                    for (let i = 0; i < row.length - 1 && i < inputs.length; i++) {
+                        const v = String(row[i + 1] || '');
+                        inputs[i].value = v;
+                        inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
+                        inputs[i].dispatchEvent(new Event('change', {bubbles: true}));
+                    }
+                    n++;
+                    break;
+                }
             }
-        }""", paste_text)
-        time.sleep(0.5)
-
-        ta = page.locator("[role=\"dialog\"] textarea, textarea").first
-        ta.dblclick()
-        time.sleep(0.3)
-        page.keyboard.press("Control+v")
-        time.sleep(1)
-
-        s("7_pasted")
-        print("  [OK] 粘贴导入")
-    except Exception as e:
-        print(f"  [FAIL] 粘贴: {e}")
-        s("7_paste_fail")
+        }
+        return n;
+    }""", data_rows)
+    s("8_filled")
+    print(f"  [OK] 逐行填充: {filled}{'/' + str(len(data_rows)) if isinstance(filled, int) else ''} 行")
 
     return True
 
