@@ -91,31 +91,18 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 勾选尺码 — PageDown滚动 + 逐行匹配 ──
-    try:
-        # 先点表格区域聚焦
-        page.locator(".jx-dialog__wrapper td, .el-dialog__wrapper td").first.click(force=True, timeout=2000)
-        time.sleep(0.2)
-    except:
-        pass
-    
-    # 用 PageDown 滚 10 次
-    for i in range(10):
-        page.keyboard.press("PageDown")
-        time.sleep(0.15)
-
-    checked = 0
-    for sz in sizes:
-        try:
-            row = page.locator(f"tr:has-text('{sz}')").first
-            cb = row.locator(".jx-checkbox__inner, .el-checkbox__inner").first
-            cb.click(force=True, timeout=3000)
-            checked += 1
-            time.sleep(0.1)
-        except:
-            pass
-    s("6_sizes")
-    print(f"  [OK] 尺码勾选: {checked}/{len(sizes)}")
+    # ── 7. 勾选尺码 ──
+    # 先用JS dump当前可见的尺码文本，确认PageDown后看到了哪些
+    visible_sizes = page.evaluate("""() => {
+        const rows = document.querySelectorAll('.el-dialog__wrapper tr, .jx-dialog__wrapper tr, [class*="dialog"] tr');
+        const result = [];
+        for (const row of rows) {
+            const txt = (row.innerText || '').trim().split('\\n')[0].substring(0, 20);
+            if (txt && txt.length < 8) result.push(txt);
+        }
+        return result.slice(0, 30);
+    }""")
+    print(f"  [DUMP] 可见尺码: {visible_sizes}")
 
     # ── 7. 粘贴导入 ──
     try:
