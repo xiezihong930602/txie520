@@ -77,54 +77,46 @@ def fill_one(page, style_name, cat_path, size_category):
     print(f"  [OK] 参数: {len(param_labels)}")
 
     # ── 5. 勾选参数后等重渲染 ──
-    # 参数勾选会触发尺码表重渲染
     time.sleep(1)
 
-    # ── 6. 取消全选 —— 找任意方式触发 ──
-    # 虚拟表格可能没有th/tr标签，用class匹配表头checkbox
+    # ── 6. 取消全选 — 点表头已勾选的checkbox ──
     try:
-        # 方式1: 找"尺码"文字附近的可点击元素，作为全选控制
-        page.locator("text=尺码").first.click(force=True, timeout=2000)
+        page.locator(".pro-virtual-table__checkbox.is-checked .jx-checkbox__inner").first.click(timeout=3000)
         time.sleep(0.3)
-        print(f"  [OK] 取消全选(点尺码文字)")
-    except:
-        pass
+        print(f"  [OK] 取消全选")
+    except Exception as e:
+        print(f"  取消全选失败: {e}")
 
-    # ── 7. Dump尺码表的真实行结构 ──
-    dump = page.evaluate("""() => {
-        const cells = document.querySelectorAll('[class*="table__cell"], [class*="row-body"], [class*="table__body"], [class*="row__cell"]');
-        const result = [];
-        for (const c of cells) {
-            const txt = (c.innerText || '').trim();
-            if (txt && txt.length <= 6 && /^[0-9XSML]+$/.test(txt)) {
-                result.push(txt);
-            }
-        }
-        return result.slice(0, 30);
-    }""")
-    print(f"  [DUMP] 数字/XS文本: {dump}")
-
-    # 用 JS 找所有含数字尺码的 div 并点击其 checkbox
-    checked = page.evaluate("""(targets) => {
-        let n = 0;
-        // 搜所有包含数字文本的cell
-        const cells = document.querySelectorAll('[class*="cell"], [class*="row"]');
-        for (const cell of cells) {
-            const txt = (cell.innerText || '').trim();
-            if (targets.includes(txt)) {
-                // 在这个cell或父级找checkbox
-                const row = cell.closest('[class*="row"]') || cell.parentElement;
-                const cb = row ? row.querySelector('.jx-checkbox__inner, .el-checkbox__inner, input[type="checkbox"]') : null;
-                if (cb) {
-                    cb.click();
-                    n++;
+    # ── 7. 勾选尺码 — 用虚拟滚动的row定位 ──
+    # 策略：找到所有 .vue-recycle-scroller__item-view 的row，按文本匹配
+    checked = 0
+    for sz in sizes:
+        try:
+            # 在每个可见行中找包含目标尺码的row
+            row = page.locator(f".vue-recycle-scroller__item-view:has-text('{sz}')").first
+            cb = row.locator(".is-selection-column .jx-checkbox__inner").first
+            cb.click(force=True, timeout=3000)
+            checked += 1
+            time.sleep(0.1)
+        except:
+            pass
+    # 如果上面没勾到，用JS暴力搜所有尺码cell
+    if checked == 0:
+        checked = page.evaluate("""(targets) => {
+            let n = 0;
+            const items = document.querySelectorAll('.vue-recycle-scroller__item-view');
+            for (const item of items) {
+                const txt = item.innerText.trim();
+                if (targets.some(t => txt.startsWith(t))) {
+                    const cb = item.querySelector('.jx-checkbox__inner');
+                    if (cb) { cb.click(); n++; }
                 }
             }
-        }
-        return n;
-    }""", sizes)
+            return n;
+        }""", sizes)
+    
     s("6_sizes")
-    print(f"  [OK] 尺码勾选(div遍历): {checked}/{len(sizes)}")
+    print(f"  [OK] 尺码勾选: {checked}/{len(sizes)}")
 
     # ── 7. 粘贴导入 ──
     try:
