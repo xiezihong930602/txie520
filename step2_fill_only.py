@@ -76,43 +76,33 @@ def fill_one(page, style_name, cat_path, size_category):
     s("4_params")
     print(f"  [OK] 参数: {len(param_labels)}")
 
-    # ── 5. 取消全选 → 先通过JS清空已勾选，再勾目标尺码 ──
-    # 取消全选：直接改Vue内部checked状态清空选中的行
-    page.evaluate("""() => {
-        // 找到虚拟表格的Vue实例，清空selection
-        const vt = document.querySelector('.pro-virtual-table, [class*="virtual-table"]');
-        if (vt && vt.__vue__) {
-            const vue = vt.__vue__;
-            // 清空选中行
-            if (vue.selection && Array.isArray(vue.selection)) vue.selection = [];
-            if (vue.selectedRows && Array.isArray(vue.selectedRows)) vue.selectedRows = [];
-        }
-    }""")
-    time.sleep(0.3)
+    # ── 5. 取消全选 ──
+    # 直接点表头checkbox的文字/label而非小方块
+    try:
+        page.locator("th .el-checkbox__label, th .jx-checkbox__label").first.click(timeout=2000)
+        time.sleep(0.2)
+        page.locator("th .el-checkbox__label, th .jx-checkbox__label").first.click(timeout=2000)
+        time.sleep(0.3)
+        print(f"  [OK] 取消全选(label)")
+    except Exception as e:
+        print(f"  取消全选失败: {e}")
 
-    # 尺码列表很长，需要虚拟滚动到目标区域。用JS直接在虚拟表格数据层取勾选
-    checked = page.evaluate("""(targets) => {
-        // 虚拟表格的数据通常挂在 Vue 实例的 data 或 tableData 上
-        const vt = document.querySelector('.pro-virtual-table, [class*="virtual-table"]');
-        if (!vt || !vt.__vue__) return 0;
-        const vue = vt.__vue__;
-        const tableData = vue.tableData || vue.data || vue.list || [];
-        let n = 0;
-        // 直接在数据层匹配
-        tableData.forEach(row => {
-            const sizeText = String(row.size || row[Object.keys(row)[0]] || '').trim();
-            if (targets.includes(sizeText)) {
-                // 切换到选中状态
-                if (!vue.selection) vue.selection = [];
-                vue.selection.push(row);
-                n++;
-            }
-        });
-        // 强制更新视图
-        if (vue.$forceUpdate) vue.$forceUpdate();
-        return n;
-    }""", sizes)
-    print(f"  [OK] 尺码勾选(Vue层): {checked}/{len(sizes)}")
+    # ── 6. 勾选目标尺码 ──
+    checked = 0
+    for sz in sizes:
+        try:
+            # 找包含该尺码文本的行，先滚到可见，再点checkbox
+            row = page.locator(f".el-dialog__wrapper tr:has-text('{sz}')").first
+            row.scroll_into_view_if_needed(timeout=5000)
+            time.sleep(0.3)
+            cb = row.locator(".jx-checkbox__inner, .el-checkbox__inner").first
+            cb.click(timeout=3000, force=True)
+            checked += 1
+            time.sleep(0.15)
+        except Exception as e:
+            pass
+    s("6_sizes")
+    print(f"  [OK] 尺码勾选: {checked}/{len(sizes)}")
 
     # ── 7. 粘贴导入 ──
     try:
