@@ -139,35 +139,37 @@ def fill_one(page, style_name, cat_path, size_category):
     print(f"  [DEBUG] data_rows={data_rows}")
 
     # ── 8. 逐行填写数据(放弃粘贴导入) ──
-    # 跳过"复制模板""粘贴导入"菜单 → 直接在弹窗内的表格input里填数据
-    # data_rows 格式: [[size, col1, col2, col3, col4], ...]
-    # 滚到底然后逐行填入
     filled = page.evaluate("""(rows) => {
         const scroller = document.querySelector('.vue-recycle-scroller');
         if (!scroller) return 'no scroller';
-        scroller.scrollTop = scroller.scrollHeight;
-        const start = Date.now();
-        while (Date.now() - start < 1500) { /* wait render */ }
-        
-        const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
-        let n = 0;
-        for (const item of items) {
-            const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];  // 取第一个token
-            for (const row of rows) {
-                const sz = String(row[0]);
-                if (txt === sz) {
-                    const inputs = item.querySelectorAll('input[type="text"]');
-                    for (let i = 0; i < row.length - 1 && i < inputs.length; i++) {
-                        inputs[i].value = String(row[i + 1] || '');
-                        inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
-                        inputs[i].dispatchEvent(new Event('change', {bubbles: true}));
+        const targets = new Set(rows.map(r => String(r[0])));
+        const filled_rows = new Set();
+        const step = 200;
+        const total = scroller.scrollHeight - scroller.clientHeight;
+        for (let pos = 0; pos <= total + step; pos += step) {
+            scroller.scrollTop = pos;
+            // Wait for render
+            const start = Date.now();
+            while (Date.now() - start < 200) { /* wait */ }
+            const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
+            for (const item of items) {
+                const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];
+                if (targets.has(txt) && !filled_rows.has(txt)) {
+                    const row = rows.find(r => String(r[0]) === txt);
+                    if (row) {
+                        const inputs = item.querySelectorAll('input[type="text"]');
+                        for (let i = 0; i < row.length - 1 && i < inputs.length; i++) {
+                            inputs[i].value = String(row[i + 1] || '');
+                            inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
+                            inputs[i].dispatchEvent(new Event('change', {bubbles: true}));
+                        }
+                        filled_rows.add(txt);
                     }
-                    n++;
-                    break;
                 }
             }
+            if (filled_rows.size >= targets.size) break;
         }
-        return n;
+        return filled_rows.size;
     }""", data_rows)
     s("8_filled")
     print(f"  [OK] 逐行填充: {filled}{'/' + str(len(data_rows)) if isinstance(filled, int) else ''} 行")
