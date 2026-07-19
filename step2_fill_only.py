@@ -107,11 +107,11 @@ def fill_one(page, style_name, cat_path, size_category):
         const scroller = document.querySelector('.vue-recycle-scroller, [class*="recycle-scroller"]');
         if (!scroller) return {checked: [], filled: 0, reason: 'no scroller'};
         
-        const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-        const step = 200;
+        const MIN_SCROLL = 5000;
+        const step = 250;
         let filledCount = 0;
         
-        for (let pos = 0; pos <= Math.max(maxScroll + 400, 5000); pos += step) {
+        for (let pos = 0; pos <= MIN_SCROLL; pos += step) {
             scroller.scrollTop = pos;
             const start = Date.now();
             while (Date.now() - start < 300) { /* wait */ }
