@@ -80,29 +80,51 @@ def fill_one(page, style_name, cat_path, size_category):
     # 参数勾选会触发尺码表重渲染
     time.sleep(1)
 
-    # ── 6. 取消全选 —— 点表头小方块 ──
+    # ── 6. 取消全选 —— 找任意方式触发 ──
+    # 虚拟表格可能没有th/tr标签，用class匹配表头checkbox
     try:
-        hdr_cb = page.locator("th .jx-checkbox__inner, th .el-checkbox__inner").first
-        hdr_cb.click(force=True, timeout=2000)
+        # 方式1: 找"尺码"文字附近的可点击元素，作为全选控制
+        page.locator("text=尺码").first.click(force=True, timeout=2000)
         time.sleep(0.3)
-        hdr_cb.click(force=True, timeout=2000)
-        time.sleep(0.3)
-        print(f"  [OK] 取消全选")
-    except Exception as e:
-        print(f"  取消全选失败: {e}")
+        print(f"  [OK] 取消全选(点尺码文字)")
+    except:
+        pass
 
-    # ── 7. 勾选尺码 ──
-    # 先用JS dump当前可见的尺码文本，确认PageDown后看到了哪些
-    visible_sizes = page.evaluate("""() => {
-        const rows = document.querySelectorAll('.el-dialog__wrapper tr, .jx-dialog__wrapper tr, [class*="dialog"] tr');
+    # ── 7. Dump尺码表的真实行结构 ──
+    dump = page.evaluate("""() => {
+        const cells = document.querySelectorAll('[class*="table__cell"], [class*="row-body"], [class*="table__body"], [class*="row__cell"]');
         const result = [];
-        for (const row of rows) {
-            const txt = (row.innerText || '').trim().split('\\n')[0].substring(0, 20);
-            if (txt && txt.length < 8) result.push(txt);
+        for (const c of cells) {
+            const txt = (c.innerText || '').trim();
+            if (txt && txt.length <= 6 && /^[0-9XSML]+$/.test(txt)) {
+                result.push(txt);
+            }
         }
         return result.slice(0, 30);
     }""")
-    print(f"  [DUMP] 可见尺码: {visible_sizes}")
+    print(f"  [DUMP] 数字/XS文本: {dump}")
+
+    # 用 JS 找所有含数字尺码的 div 并点击其 checkbox
+    checked = page.evaluate("""(targets) => {
+        let n = 0;
+        // 搜所有包含数字文本的cell
+        const cells = document.querySelectorAll('[class*="cell"], [class*="row"]');
+        for (const cell of cells) {
+            const txt = (cell.innerText || '').trim();
+            if (targets.includes(txt)) {
+                // 在这个cell或父级找checkbox
+                const row = cell.closest('[class*="row"]') || cell.parentElement;
+                const cb = row ? row.querySelector('.jx-checkbox__inner, .el-checkbox__inner, input[type="checkbox"]') : null;
+                if (cb) {
+                    cb.click();
+                    n++;
+                }
+            }
+        }
+        return n;
+    }""", sizes)
+    s("6_sizes")
+    print(f"  [OK] 尺码勾选(div遍历): {checked}/{len(sizes)}")
 
     # ── 7. 粘贴导入 ──
     try:
