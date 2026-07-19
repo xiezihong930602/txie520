@@ -77,7 +77,6 @@ def fill_one(page, style_name, cat_path, size_category):
     print(f"  [OK] 参数: {len(param_labels)}")
 
     # ── 5. 取消全选 ──
-    # 直接点表头checkbox的文字/label而非小方块
     try:
         page.locator("th .el-checkbox__label, th .jx-checkbox__label").first.click(timeout=2000)
         time.sleep(0.2)
@@ -88,19 +87,47 @@ def fill_one(page, style_name, cat_path, size_category):
         print(f"  取消全选失败: {e}")
 
     # ── 6. 勾选目标尺码 ──
-    checked = 0
-    for sz in sizes:
-        try:
-            # 找包含该尺码文本的行，先滚到可见，再点checkbox
-            row = page.locator(f".el-dialog__wrapper tr:has-text('{sz}')").first
-            row.scroll_into_view_if_needed(timeout=5000)
-            time.sleep(0.3)
-            cb = row.locator(".jx-checkbox__inner, .el-checkbox__inner").first
-            cb.click(timeout=3000, force=True)
-            checked += 1
-            time.sleep(0.15)
-        except Exception as e:
-            pass
+    # 虚拟滚动：先JS滚到目标区域，再逐行点
+    checked = page.evaluate("""(targets) => {
+        // 找到虚拟滚动容器
+        const scroller = document.querySelector('.vue-recycle-scroller, .pro-virtual-scroll, [class*="virtual-scroll"], [class*="recycle-scroller"]');
+        if (!scroller) return 0;
+        
+        // 找所有尺码行的checkbox（包括不可见的）
+        const allRows = scroller.querySelectorAll('tr, .pro-virtual-table__row, [class*="table__row"]');
+        
+        // 先暴力滚动到底部看全部数据
+        let maxTop = 0;
+        const container = scroller.querySelector('.vue-recycle-scroller__item-wrapper, [class*="item-wrapper"], tbody') || scroller;
+        
+        let n = 0;
+        // 分批滚：每次滚500px，检查当前可见行
+        for (let scrollY = 0; scrollY < 5000; scrollY += 400) {
+            container.style.transform = 'translateY(-' + scrollY + 'px)';
+            scroller.scrollTop = scrollY;
+            // 等渲染
+            // 检查当前可见的checkbox
+            const cbs = scroller.querySelectorAll('.jx-checkbox__inner, .el-checkbox__inner');
+            for (const cb of cbs) {
+                if (cb.getBoundingClientRect().height < 5) continue;
+                // 找同行内的尺码文本
+                const row = cb.closest('tr') || cb.closest('[class*="row"]');
+                if (!row) continue;
+                const txt = (row.textContent || '').trim();
+                for (const t of targets) {
+                    if (txt.includes(t)) {
+                        cb.click();
+                        n++;
+                        targets = targets.filter(x => x !== t); // 去重
+                        break;
+                    }
+                }
+            }
+            if (n >= targets.length + targets.length) break;
+        }
+        return n;
+    }""", sizes)
+    time.sleep(1)
     s("6_sizes")
     print(f"  [OK] 尺码勾选: {checked}/{len(sizes)}")
 
