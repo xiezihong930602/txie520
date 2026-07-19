@@ -136,37 +136,30 @@ def fill_one(page, style_name, cat_path, size_category):
     s("6_sizes")
     print(f"  [OK] 尺码勾选: {len(result.get('checked',[]))}/{len(sizes)} (已勾:{result.get('checked',[])}, 剩余:{result.get('remaining',[])})")
 
-    # ── 8. 粘贴导入 ──
+    # ── 8. 粘贴导入 (Codegen方案: 先 Ctrl+C 复制Excel数据到剪贴板, 再双击textarea激活, 最后 Ctrl+V) ──
     try:
+        # 先确保剪贴板有数据: 用 PowerShell 写入
+        import subprocess
+        ps_cmd = f'[System.Windows.Forms.Clipboard]::SetText(@\"\n{paste_text}\n\"@)'
+        subprocess.run(['powershell', '-Command', f'Add-Type -AssemblyName System.Windows.Forms; {ps_cmd}'], capture_output=True)
+
         page.get_by_role("button", name="Excel快速编辑").click()
         time.sleep(0.5)
-        page.get_by_role("menuitem", name="第二步：粘贴导入").click()
-        time.sleep(1)
-        # Dump textarea 真实属性
-        info = page.evaluate("""() => {
-            const ta = document.querySelector('[role=\"dialog\"] textarea, textarea');
-            if (!ta) return 'NOT FOUND';
-            return {
-                tag: ta.tagName,
-                type: ta.type,
-                readonly: ta.readOnly,
-                disabled: ta.disabled,
-                placeholder: ta.placeholder,
-                className: ta.className?.substring(0, 80),
-                value_len: ta.value.length,
-                vue_model: ta.__vue__ ? Object.keys(ta.__vue__).slice(0,10) : 'no __vue__',
-                contenteditable: ta.getAttribute('contenteditable'),
-                parent_tag: ta.parentElement?.tagName,
-                parent_class: ta.parentElement?.className?.substring(0, 80)
-            };
-        }""")
-        print(f"  [DUMP] textarea: {info}")
-
-        # Playwright 直接填
-        page.locator("[role=\"dialog\"] textarea, textarea").first.fill(paste_text)
+        page.get_by_role("menuitem", name="第一步：复制模板").click()
         time.sleep(0.5)
+        page.get_by_role("menuitem", name="第二步：粘贴导入").click()
+        time.sleep(1.5)
+
+        # Codegen 关键: 先定位 textarea 并双击激活
+        ta = page.locator("#jx-id-8614-481, [role=\"dialog\"] textarea, textarea").first
+        ta.dblclick()  # 双击激活 => Codegen 就是 dblclick
+        time.sleep(0.3)
+        page.keyboard.press("Control+a")
+        page.keyboard.press("Control+v")
+        time.sleep(1)
+
         s("7_pasted")
-        print("  [OK] 粘贴(fill)")
+        print("  [OK] 粘贴导入(Codegen)")
     except Exception as e:
         print(f"  [FAIL] 粘贴: {e}")
         s("7_paste_fail")
