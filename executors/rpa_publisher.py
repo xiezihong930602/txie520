@@ -1141,6 +1141,35 @@ class RpaPublisherExecutor(BaseExecutor):
                 print(f"  警告: 未找到尺码 {size_str}")
         time.sleep(0.5)
     
+    def _read_product_category(self) -> str:
+        """从上架页面读取当前产品的类目路径"""
+        cat = self.page.evaluate("""() => {
+            // 方法1：找包含"产品类目"的el-form-item里的值
+            const formItems = document.querySelectorAll('.el-form-item');
+            for (const fi of formItems) {
+                const label = fi.querySelector('.el-form-item__label');
+                if (label && (label.innerText || '').includes('类目')) {
+                    const inner = fi.querySelector('.el-input__inner');
+                    if (inner) return inner.value || '';
+                    const txt = (fi.innerText || '').replace(label.innerText, '').trim();
+                    if (txt) return txt;
+                }
+            }
+            // 方法2：找value属性包含"服装"的input
+            const inputs = document.querySelectorAll('input[value*="服装"]');
+            if (inputs.length > 0) return inputs[0].value;
+            // 方法3：找文本包含"服装"的任意可见元素
+            const all = document.querySelectorAll('*');
+            for (const el of all) {
+                const t = (el.innerText || '').trim();
+                if (t.startsWith('服装、') && t.includes('/') && el.children.length === 0) {
+                    return t;
+                }
+            }
+            return '';
+        }""")
+        return cat.strip() if cat else ""
+
     def _select_size_chart(self, style_name: str):
         """选择尺码表（按款式名匹配）"""
         select_container = self.page.locator(".size-template-select-container").first
@@ -1222,8 +1251,32 @@ class RpaPublisherExecutor(BaseExecutor):
         if chosen:
             print(f"  尺码表: {style_name}")
         else:
-            print(f"  警告: 未找到尺码表 {style_name}")
+            print(f"  未找到尺码表 {style_name}，自动创建...")
             self.page.keyboard.press("Escape")
+            time.sleep(0.5)
+            # 从当前上架页面读取产品类目
+            cat_path = self._read_product_category()
+            print(f"  读取到类目: {cat_path}")
+            # 新标签页打开尺码表管理页面
+            sz_page = self.context.new_page()
+            sz_page.goto("https://erp.91miaoshou.com/pddkj/move_collect/template_management/sizeChart",
+                         wait_until="domcontentloaded")
+            time.sleep(4)
+            from utils.sizetable_creator import create_sizetable_for_style
+            sz_ok = create_sizetable_for_style(sz_page, style_name, cat_path)
+            sz_page.close()
+            if sz_ok:
+                # 回到上架页面重新搜索
+                time.sleep(1)
+                select_container.click()
+                time.sleep(1.5)
+                self.page.keyboard.press("Control+A")
+                time.sleep(0.1)
+                self.page.keyboard.type(style_name)
+                time.sleep(1.2)
+                # 再次尝试选择
+                self.page.evaluate(f"(name) => {{ const all = document.querySelectorAll('li, [class*=\"dropdown-item\"]'); for (const item of all) {{ if ((item.innerText||'').includes(name) && item.getBoundingClientRect().height>10) {{ item.click(); break; }} }} }}", style_name)
+                time.sleep(0.5)
         time.sleep(0.5)
     
     def _select_size_chart_mixed_set(self, top_style: str, bottom_style: str):
