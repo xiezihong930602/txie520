@@ -16,19 +16,18 @@ CATEGORY_MAP = {
     "女童上衣": "服装、鞋靴和珠宝饰品/女童时尚/女童服装/女童上装",
     "女童裤子": "服装、鞋靴和珠宝饰品/女童时尚/女童服装/女童下装",
 }
-DEFAULT_CAT = "服装、鞋靴和珠宝饰品/男童时尚/男童服装/男童时尚帽衫和卫衣/男童时尚帽衫"
+DEFAULT_CAT = ""  # 优先从上架页面读取，读不到才用
 
 
 def get_category_path(style_name: str, category: str = "") -> str:
-    """根据款式名和分类获取类目路径"""
+    """根据款式名和分类获取类目路径，失败返回空字符串"""
     if "成人" in style_name:
-        return CATEGORY_MAP.get("成人上衣" if "裤" not in style_name else "成人裤子", DEFAULT_CAT)
+        return CATEGORY_MAP.get("成人上衣" if "裤" not in style_name else "成人裤子", "")
     if "女童" in style_name:
-        return CATEGORY_MAP.get("女童上衣" if "裤" not in style_name else "女童裤子", DEFAULT_CAT)
+        return CATEGORY_MAP.get("女童上衣" if "裤" not in style_name else "女童裤子", "")
     if category:
-        return CATEGORY_MAP.get(category, DEFAULT_CAT)
-    # 默认儿童
-    return CATEGORY_MAP.get("儿童上衣" if "裤" not in style_name else "儿童裤子", DEFAULT_CAT)
+        return CATEGORY_MAP.get(category, "")
+    return CATEGORY_MAP.get("儿童上衣" if "裤" not in style_name else "儿童裤子", "")
 
 
 def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> bool:
@@ -42,6 +41,9 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
 
     if not cat_path:
         cat_path = get_category_path(style_name)
+    if not cat_path:
+        print(f"  [SKIP] 无法确定类目路径")
+        return False
 
     param_labels = map_param_labels(headers)
     sizes = get_size_list(data_rows)
@@ -57,25 +59,26 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.get_by_role("textbox", name="*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 2. 类目 — 搜索后精确匹配文字点击（避免选到上级节点）
+    # 2. 类目 — 打开面板→输入最后一级→找最短匹配文字点击（叶子节点）
     cat_kw = cat_path.split("/")[-1].strip()
     page.get_by_role("textbox", name="*类目").click()
+    time.sleep(0.5)
+    # 先点开级联面板
+    page.locator(".el-cascader input, .el-input__inner").first.click()
     time.sleep(0.3)
-    page.get_by_role("textbox", name="*类目").fill(cat_kw)
+    page.keyboard.type(cat_kw)
     time.sleep(2)
+    # 找搜索下拉中文本最短的匹配项点击（最短=最末级=最精确）
     page.evaluate("""(kw) => {
-        const items = document.querySelectorAll('li[role="option"], .el-cascader-node__label, .el-select-dropdown__item span');
-        for (const el of items) {
-            if ((el.innerText || '').trim() === kw) { el.click(); return true; }
+        let best = null, bestLen = 999;
+        const nodes = document.querySelectorAll('.el-cascader-node__label, .el-cascader-menu__item, li[role="menuitem"]');
+        for (const n of nodes) {
+            const t = (n.innerText || '').trim();
+            if (t.includes(kw) && t.length < bestLen) {
+                best = n; bestLen = t.length;
+            }
         }
-        // fallback: contains match, prefer shortest text
-        let best = null; let bestLen = Infinity;
-        for (const el of items) {
-            const t = (el.innerText || '').trim();
-            if (t.includes(kw) && t.length < bestLen) { best = el; bestLen = t.length; }
-        }
-        if (best) { best.click(); return true; }
-        return false;
+        if (best) best.click();
     }""", cat_kw)
     time.sleep(1.5)
 
