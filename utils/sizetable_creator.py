@@ -4,30 +4,7 @@
 import time
 from pathlib import Path
 
-SIZE_CHART_URL = "https://erp.91miaoshou.com/pddkj/move_collect/template_management/sizeChart"
 EXCEL_PATH = Path(r"C:\Users\Administrator\Downloads\款式尺码对照表（上衣裤子分格式）.xlsx")
-
-# 类目映射：style.category → 完整类目路径
-CATEGORY_MAP = {
-    "儿童上衣": "服装、鞋靴和珠宝饰品/男童时尚/男童服装/男童时尚帽衫和卫衣/男童时尚帽衫",
-    "儿童裤子": "服装、鞋靴和珠宝饰品/男童时尚/男童服装/男童下装",
-    "成人上衣": "服装、鞋靴和珠宝饰品/男装/男装上衣",
-    "成人裤子": "服装、鞋靴和珠宝饰品/男装/男装下装",
-    "女童上衣": "服装、鞋靴和珠宝饰品/女童时尚/女童服装/女童上装",
-    "女童裤子": "服装、鞋靴和珠宝饰品/女童时尚/女童服装/女童下装",
-}
-DEFAULT_CAT = ""  # 优先从上架页面读取，读不到才用
-
-
-def get_category_path(style_name: str, category: str = "") -> str:
-    """根据款式名和分类获取类目路径，失败返回空字符串"""
-    if "成人" in style_name:
-        return CATEGORY_MAP.get("成人上衣" if "裤" not in style_name else "成人裤子", "")
-    if "女童" in style_name:
-        return CATEGORY_MAP.get("女童上衣" if "裤" not in style_name else "女童裤子", "")
-    if category:
-        return CATEGORY_MAP.get(category, "")
-    return CATEGORY_MAP.get("儿童上衣" if "裤" not in style_name else "儿童裤子", "")
 
 
 def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> bool:
@@ -40,9 +17,7 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
         return False
 
     if not cat_path:
-        cat_path = get_category_path(style_name)
-    if not cat_path:
-        print(f"  [SKIP] 无法确定类目路径")
+        print(f"  [SKIP] 无类目路径")
         return False
 
     param_labels = map_param_labels(headers)

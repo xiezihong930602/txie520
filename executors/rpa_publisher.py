@@ -1315,14 +1315,14 @@ class RpaPublisherExecutor(BaseExecutor):
     def _click_add_size_chart_selector(self):
         """点击'+添加尺码表'按钮"""
         try:
-            add_btn = self.page.locator("span:has-text('添加尺码表'), button:has-text('添加')").first
+            add_btn = self.page.locator("span:has-text('添加尺码表'), button:has-text('添加尺码表')").first
             if add_btn.is_visible(timeout=2000):
                 add_btn.click()
                 time.sleep(0.5)
+                return
         except:
-            print("  警告: 未找到添加尺码表按钮")
-        self.page.mouse.click(10, 10)
-        time.sleep(0.3)
+            pass
+        print("  警告: 未找到添加尺码表按钮")
     
     def _select_size_chart_by_index(self, index: int, style_name: str):
         """按索引选择尺码表（0=尺码表1, 1=尺码表2）
