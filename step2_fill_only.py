@@ -87,65 +87,53 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 纯JS原子操作：滚动+勾选+填数据都在一次evaluate中完成 ──
-    # 每轮滚300px → 扫描 → 勾选+填 → 继续滚，全部在浏览器内同步执行
-    result = page.evaluate("""(data_rows) => {
-        const dataMap = {};
-        data_rows.forEach(r => { dataMap[String(r[0])] = r.slice(1); });
-        const remaining = Object.keys(dataMap);
-        const filled = [];
-        const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        
+    # ── 7. 滚动+勾选 + 逐行填充(分离两步) ──
+    # 第一步: 一次性滚到底，勾选所有目标尺码
+    page.evaluate("""(targets) => {
         const scroller = document.querySelector('.vue-recycle-scroller');
-        if (!scroller) return {filled: [], reason: 'no scroller'};
-        
-        let lastScroll = -1;
-        for (let attempt = 0; attempt < 120; attempt++) {
-            scroller.scrollTop += 300;
-            const cur = scroller.scrollTop;
-            if (cur === lastScroll) break;
-            lastScroll = cur;
-            
-            // 等渲染: 用requestAnimationFrame同步
-            const waitStart = Date.now();
-            while (Date.now() - waitStart < 400) { /* wait */ }
-            
-            // 从remaining中找第一个可处理的
-            for (let ri = 0; ri < remaining.length; ri++) {
-                const sz = remaining[ri];
-                const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
-                for (const item of items) {
-                    const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];
-                    if (txt === sz) {
-                        // 勾选
-                        const cb = item.querySelector('.jx-checkbox__inner');
-                        if (cb) cb.click();
-                        // 等Vue更新input状态
-                        const start = Date.now();
-                        while (Date.now() - start < 100) {}
-                        // 填数据
-                        const inputs = item.querySelectorAll('input[type="text"]');
-                        const cols = dataMap[sz];
-                        for (let i = 0; i < cols.length && i < inputs.length; i++) {
-                            ns.call(inputs[i], String(cols[i] || ''));
-                            inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
-                        }
-                        filled.push(sz);
-                        remaining.splice(ri, 1);
-                        ri--;  // 调整索引
-                        break;
-                    }
+        if (!scroller) return;
+        scroller.scrollTop = 0;
+        while (scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight) {
+            scroller.scrollTop += 400;
+            const start = Date.now();
+            while (Date.now() - start < 300) {}
+            const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
+            for (const item of items) {
+                const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];
+                if (targets.includes(txt)) {
+                    const cb = item.querySelector('.jx-checkbox__inner');
+                    if (cb) cb.click();
                 }
-                if (filled.length > 0 && filled[filled.length-1] === sz) break; // 处理完一个
             }
-            if (remaining.length === 0) break;
         }
-        return {filled, remaining};
-    }""", data_rows)
+    }""", sizes)
+    time.sleep(1)
+    
+    # 第二步: 回到顶部，逐个scroll_into_view + fill
+    page.evaluate("""() => {
+        const s = document.querySelector('.vue-recycle-scroller');
+        if (s) s.scrollTop = 0;
+    }""")
+    time.sleep(0.5)
+    
+    checked = []
+    for row in data_rows:
+        sz = str(row[0])
+        try:
+            item = page.locator(f".vue-recycle-scroller__item-view:has-text('{sz}')").first
+            item.scroll_into_view_if_needed(timeout=3000)
+            time.sleep(0.3)
+            inputs = item.locator("input[type=\"text\"]").all()
+            cols = row[1:]
+            for i in range(len(cols)):
+                if i < len(inputs):
+                    inputs[i].fill(str(cols[i] or ""), timeout=2000)
+            checked.append(sz)
+        except:
+            pass
     
     s("6_sizes")
-    filled = result.get('filled', [])
-    print(f"  [OK] 尺码填充: {len(filled)}/{len(data_rows)} 行 ({sorted(filled)})")
+    print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({checked})")
 
     # ── 8. 保存 ──
     try:
