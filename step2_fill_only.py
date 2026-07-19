@@ -99,42 +99,56 @@ def fill_one(page, style_name, cat_path, size_category):
     data_map = {str(r[0]): r[1:] for r in data_rows}
     remaining = set(data_map.keys())
     
-    # 分段滚：每次从Python端设scrollTop+等渲染，然后扫描
-    for pos in range(0, 6000, 200):
-        page.evaluate("""(p) => {
+    # ── 7. 自适应滚动+填充 ──
+    checked = set()
+    data_map = {str(r[0]): r[1:] for r in data_rows}
+    remaining = set(data_map.keys())
+
+    # 动态找滚动容器 + 滚到底检测
+    last_scroll = -1
+    for attempt in range(100):  # 最多100轮
+        cur = page.evaluate("""() => {
             const s = document.querySelector('.vue-recycle-scroller');
-            if (s) s.scrollTop = p;
-        }""", pos)
+            if (!s) return -1;
+            s.scrollTop += 400;
+            return s.scrollTop;
+        }""")
         time.sleep(0.4)
-        
+
+        if cur == last_scroll:
+            break  # 滚到底了
+        last_scroll = cur
+
+        # 扫描可见item
         items = page.locator(".vue-recycle-scroller__item-view").all()
         for item in items:
             try:
                 txt = item.inner_text().strip()
-            except Exception as ex:
-                print(f"  [ERR] inner_text: {ex}")
+            except:
                 continue
+            # 通用尺码提取：首个token
             short = txt.split()[0] if txt.split() else txt
             if short in remaining:
                 try:
-                    # 先勾选该行checkbox解锁input
                     cb = item.locator(".jx-checkbox__inner").first
                     cb.click(force=True, timeout=1000)
                     time.sleep(0.1)
                     inputs = item.locator("input[type=\"text\"]").all()
                     cols = data_map[short]
+                    filled_count = 0
                     for i in range(len(cols)):
                         if i < len(inputs):
                             inputs[i].fill(str(cols[i] or ""), timeout=2000)
+                            filled_count += 1
                     remaining.discard(short)
                     checked.add(short)
-                    print(f"    filled: {short}")
+                    print(f"    filled: {short} ({filled_count}/{len(cols)} cols)")
                 except Exception as ex:
-                    print(f"    [ERR] fill {short}: {ex}")
-        
+                    print(f"    [ERR] {short}: {str(ex)[:100]}")
+
         if not remaining:
             break
-    
+
     s("6_sizes")
     print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({sorted(checked)})")
 
