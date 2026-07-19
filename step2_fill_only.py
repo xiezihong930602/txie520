@@ -138,42 +138,33 @@ def fill_one(page, style_name, cat_path, size_category):
 
     print(f"  [DEBUG] data_rows={data_rows}")
 
-    # ── 8. 逐行填写数据(放弃粘贴导入) ──
-    filled = page.evaluate("""(rows) => {
-        const scroller = document.querySelector('.vue-recycle-scroller');
-        if (!scroller) return 'no scroller';
-        const targets = new Set(rows.map(r => String(r[0])));
-        const filled_rows = new Set();
-        const step = 200;
-        const total = scroller.scrollHeight - scroller.clientHeight;
-        for (let pos = 0; pos <= total + step; pos += step) {
-            scroller.scrollTop = pos;
-            // Wait for render
-            const start = Date.now();
-            while (Date.now() - start < 200) { /* wait */ }
-            const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
-            for (const item of items) {
-                const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];
-                if (targets.has(txt) && !filled_rows.has(txt)) {
-                    const row = rows.find(r => String(r[0]) === txt);
-                    if (row) {
-                        const inputs = item.querySelectorAll('input[type="text"]');
-                        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                        for (let i = 0; i < row.length - 1 && i < inputs.length; i++) {
-                            nativeSetter.call(inputs[i], String(row[i + 1] || ''));
-                            inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
-                            inputs[i].dispatchEvent(new Event('change', {bubbles: true}));
-                        }
-                        filled_rows.add(txt);
-                    }
-                }
-            }
-            if (filled_rows.size >= targets.size) break;
-        }
-        return filled_rows.size;
-    }""", data_rows)
+    # ── 8. 逐行填写数据(Playwright端鼠标滚轮+Python定位) ──
+    # 先滚到底部（120区域）
+    tbl = page.locator(".vue-recycle-scroller")
+    tbl.click(force=True, timeout=2000)
+    time.sleep(0.3)
+    
+    # 滚20次, 每次滚200px
+    for i in range(20):
+        page.mouse.wheel(0, 200)
+        time.sleep(0.08)
+    time.sleep(1)
+    
+    filled = 0
+    for row in data_rows:
+        sz = row[0]
+        try:
+            # 找包含该尺码文本的row, 填inputs
+            item = page.locator(f".vue-recycle-scroller__item-view:has-text('{sz}')").first
+            inputs = item.locator("input[type=\"text\"]").all()
+            for i in range(1, len(row)):
+                if i - 1 < len(inputs):
+                    inputs[i - 1].fill(str(row[i]), timeout=2000)
+            filled += 1
+        except Exception as e:
+            pass
     s("8_filled")
-    print(f"  [OK] 逐行填充: {filled}{'/' + str(len(data_rows)) if isinstance(filled, int) else ''} 行")
+    print(f"  [OK] 逐行填充: {filled}/{len(data_rows)} 行")
 
     return True
 
