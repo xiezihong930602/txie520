@@ -1,4 +1,4 @@
-﻿"""尺码表模板自动创建 RPA v4 - 弹窗内操作限定"""
+﻿"""尺码表模板自动创建 RPA v5 - 修复弹窗定位"""
 import os, sys, time
 from pathlib import Path
 
@@ -18,7 +18,8 @@ ALL_PARAMS = [
     "腰围全围(cm)", "臀围全围(cm)", "大腿围全围(cm)", "裤长(cm)", "裤内长(cm)", "夹圈(cm)"
 ]
 
-DIALOG_SEL = ".jx-dialog__wrapper, .el-dialog__wrapper"
+DIALOG_BASE = '.el-dialog__wrapper:visible, .jx-dialog__wrapper:visible'
+DIALOG_VISIBLE = '.el-dialog__wrapper'
 
 def load_size_data(excel_path, style_name):
     wb = openpyxl.load_workbook(excel_path)
@@ -53,6 +54,24 @@ def generate_paste_text(headers, data_rows):
         lines.append("\t".join([size] + vals))
     return "\n".join(lines)
 
+def get_visible_dialog(page):
+    """找到当前可见的弹窗"""
+    dialogs = page.locator(DIALOG_VISIBLE).all()
+    for d in dialogs:
+        if d.is_visible():
+            return d
+    # fallback: 用JS找
+    vid = page.evaluate("""() => {
+        const ds = document.querySelectorAll('.el-dialog__wrapper, .jx-dialog__wrapper');
+        for (let i = ds.length - 1; i >= 0; i--) {
+            if (ds[i].getBoundingClientRect().height > 100 && ds[i].style.display !== 'none') return i;
+        }
+        return -1;
+    }""")
+    if vid >= 0:
+        return dialogs[vid]
+    return None
+
 def create_one(page, style_name, cat_path, size_category):
     print(f"\n===== {style_name} =====")
     headers, data_rows, is_top = load_size_data(EXCEL_PATH, style_name)
@@ -63,17 +82,22 @@ def create_one(page, style_name, cat_path, size_category):
     print(f"  类型: {'上衣' if is_top else '裤子'}, 参数: {params}, 尺码: {len(sizes)}")
 
     # 1. 创建
-    create_btn = page.locator("button:has-text('创建尺码表模板')")
-    create_btn.click(force=True)
+    page.locator("button:has-text('创建尺码表模板')").first.click(force=True)
     time.sleep(2)
 
-    # 获取弹窗容器
-    dialog = page.locator(DIALOG_SEL).last
-    print(f"  弹窗可见: {dialog.is_visible()}")
+    dialog = get_visible_dialog(page)
+    if not dialog:
+        print(f"  [FAIL] 找不到弹窗")
+        page.screenshot(path=str(ROOT / f"size_err_nodlg_{style_name}.png"))
+        return False
+    print(f"  弹窗可见: True")
 
-    # 2. 填名称 - 在弹窗内找input
+    # 2. 填名称
     try:
-        name_inp = dialog.locator('input[placeholder*="请输入模板名称"]')
+        name_inp = dialog.locator('input[placeholder*="模板名称"]')
+        if name_inp.count() == 0:
+            # 第一个input（排除cascader的）
+            name_inp = dialog.locator('input:not([placeholder*="搜索"]):not([placeholder*="选择"])').first
         name_inp.click(force=True)
         name_inp.fill(style_name)
         time.sleep(0.3)
@@ -83,7 +107,7 @@ def create_one(page, style_name, cat_path, size_category):
         page.screenshot(path=str(ROOT / f"size_err_name_{style_name}.png"))
         return False
 
-    # 3. 类目 - 键盘搜索（弹窗内的cascader input）
+    # 3. 类目
     try:
         cat_inp = dialog.locator('input[placeholder*="请选择或输入搜索"]')
         cat_inp.click(force=True)
@@ -100,7 +124,7 @@ def create_one(page, style_name, cat_path, size_category):
         page.screenshot(path=str(ROOT / f"size_err_cat_{style_name}.png"))
         return False
 
-    # 4. 分类下拉
+    # 4. 分类
     try:
         sel = dialog.locator('.el-select', has_text='分类')
         if sel.count() == 0: sel = dialog.locator('.el-select').nth(1)
@@ -111,16 +135,14 @@ def create_one(page, style_name, cat_path, size_category):
     except:
         print(f"  [WARN] 分类跳过")
 
-    # 5. 勾选参数 - 弹窗内的checkbox label
+    # 5. 勾选参数
     cbs = dialog.locator(".el-checkbox__label").all()
     for cb in cbs:
         try:
             label = cb.inner_text().strip()
             if label in params:
-                cb.click(force=True)
-                time.sleep(0.1)
-        except:
-            continue
+                cb.click(force=True); time.sleep(0.1)
+        except: continue
     print(f"  [OK] 参数勾选")
 
     # 6. 尺码勾选
@@ -133,10 +155,8 @@ def create_one(page, style_name, cat_path, size_category):
             try:
                 label = row.locator("td").first.inner_text().strip()
                 if label in sizes:
-                    row.locator(".el-checkbox").first.click(force=True)
-                    time.sleep(0.1)
-            except:
-                continue
+                    row.locator(".el-checkbox").first.click(force=True); time.sleep(0.1)
+            except: continue
         print(f"  [OK] 尺码勾选: {len(sizes)}")
     except Exception as e:
         print(f"  尺码勾选失败: {e}")
