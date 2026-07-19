@@ -57,15 +57,26 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.get_by_role("textbox", name="*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 2. 类目 — 键盘流（避免li:has-text匹配到上级节点）
+    # 2. 类目 — 搜索后精确匹配文字点击（避免选到上级节点）
     cat_kw = cat_path.split("/")[-1].strip()
     page.get_by_role("textbox", name="*类目").click()
     time.sleep(0.3)
     page.get_by_role("textbox", name="*类目").fill(cat_kw)
     time.sleep(2)
-    page.keyboard.press("ArrowDown")
-    time.sleep(0.3)
-    page.keyboard.press("Enter")
+    page.evaluate("""(kw) => {
+        const items = document.querySelectorAll('li[role="option"], .el-cascader-node__label, .el-select-dropdown__item span');
+        for (const el of items) {
+            if ((el.innerText || '').trim() === kw) { el.click(); return true; }
+        }
+        // fallback: contains match, prefer shortest text
+        let best = null; let bestLen = Infinity;
+        for (const el of items) {
+            const t = (el.innerText || '').trim();
+            if (t.includes(kw) && t.length < bestLen) { best = el; bestLen = t.length; }
+        }
+        if (best) { best.click(); return true; }
+        return false;
+    }""", cat_kw)
     time.sleep(1.5)
 
     # 3. 参数勾选
