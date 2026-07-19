@@ -70,6 +70,7 @@ def build_product(data: dict, style_lib: list) -> tuple:
         # 套装默认2件，用户填了就用用户的
         if sku_quantity <= 1:
             sku_quantity = 2
+    print(f"  [构建] combo_type={combo_type}, 款式数={len(all_extra_styles)+1}, sku_class={sku_class}")
     
     # 构建颜色列表（带图片URL）
     colors = []
