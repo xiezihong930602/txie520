@@ -59,13 +59,25 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.get_by_role("textbox", name="*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 2. 类目 — Ctrl+A清空+键盘输入+回车（避免fill被Vue覆盖）
+    # 2. 类目 — JS直接操作native input设值+触发搜索事件
     cat_kw = cat_path.split("/")[-1].strip()
-    page.get_by_role("textbox", name="*类目").click()
-    time.sleep(0.5)
-    page.keyboard.press("Control+A")
-    time.sleep(0.1)
-    page.keyboard.type(cat_kw)
+    page.evaluate("""(kw) => {
+        // 找类目级联选择器的input
+        const formItems = document.querySelectorAll('.el-form-item');
+        for (const fi of formItems) {
+            const label = fi.querySelector('.el-form-item__label');
+            if (label && (label.innerText || '').includes('类目')) {
+                const input = fi.querySelector('input');
+                if (input) {
+                    const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                    ns.call(input, kw);
+                    input.dispatchEvent(new Event('input', {bubbles: true}));
+                    input.dispatchEvent(new Event('change', {bubbles: true}));
+                    input.focus();
+                }
+            }
+        }
+    }""", cat_kw)
     time.sleep(2)
     page.keyboard.press("Enter")
     time.sleep(1.5)

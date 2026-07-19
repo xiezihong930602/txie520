@@ -14,7 +14,18 @@ class Product:
     image_urls: List[str] = field(default_factory=list)  # 主图URL
     colors: List[str] = field(default_factory=list)      # 颜色列表
     sizes: Optional[List[str]] = None  # 尺码（为空则用款式默认）
-    sub_style: Optional[Style] = None  # 副款式（套装用）
+    all_styles: List[Style] = field(default_factory=list)  # 套装所有款式（含主款式）
+    sku_quantity: int = 1            # SKU件数
+    
+    # 兼容旧代码
+    @property
+    def sub_style(self) -> Optional[Style]:
+        return self.all_styles[0] if self.all_styles else None
+    
+    @sub_style.setter
+    def sub_style(self, value):
+        if value:
+            self.all_styles = [value]
     
     # 可覆盖字段（为空则自动计算）
     price_override: Optional[float] = None     # 供货价覆盖
@@ -28,19 +39,27 @@ class Product:
     error_msg: Optional[str] = None # 错误信息
     
     @property
+    def style_count(self) -> int:
+        """套装组成件数"""
+        if self.combo_type == "suit":
+            return max(1, len(self.all_styles) + 1)  # +1 = main_style
+        return 1
+    
+    @property
     def final_price(self) -> float:
-        """最终供货价：覆盖值优先，否则成本×2"""
+        """供货价：单品=成本×2, 多件装=成本×件数×2, 套装=总成本×(SKU件数÷组成件数)×2"""
         if self.price_override is not None:
             return self.price_override
         from config.settings import PRICE_MULTIPLIER
-        base_cost = self.main_style.cost_price
-        if self.combo_type == "2pack":
-            base_cost *= 2
-        elif self.combo_type == "3pack":
-            base_cost *= 3
-        elif self.combo_type == "suit" and self.sub_style:
-            base_cost += self.sub_style.cost_price
-        return round(base_cost * PRICE_MULTIPLIER, 2)
+        if self.combo_type == "suit":
+            total_cost = self.main_style.cost_price
+            for s in self.all_styles:
+                total_cost += s.cost_price
+            return round(total_cost * (self.sku_quantity / self.style_count) * PRICE_MULTIPLIER, 2)
+        elif self.combo_type in ("2pack", "3pack"):
+            return round(self.main_style.cost_price * self.sku_quantity * PRICE_MULTIPLIER, 2)
+        else:
+            return round(self.main_style.cost_price * PRICE_MULTIPLIER, 2)
     
     @property
     def final_net_weight(self) -> float:
@@ -52,8 +71,9 @@ class Product:
             w *= 2
         elif self.combo_type == "3pack":
             w *= 3
-        elif self.combo_type == "suit" and self.sub_style:
-            w += self.sub_style.net_weight
+        elif self.combo_type == "suit":
+            for s in self.all_styles:
+                w += s.net_weight
         return w
     
     @property
@@ -66,8 +86,9 @@ class Product:
             w *= 2
         elif self.combo_type == "3pack":
             w *= 3
-        elif self.combo_type == "suit" and self.sub_style:
-            w += self.sub_style.gross_weight
+        elif self.combo_type == "suit":
+            for s in self.all_styles:
+                w += s.gross_weight
         return w
     
     @property

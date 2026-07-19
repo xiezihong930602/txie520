@@ -447,34 +447,28 @@ class RpaPublisherExecutor(BaseExecutor):
         is_mixed_set = (product.combo_type == "suit" or 
                        getattr(product, 'sku_class_override', '') == "混合套装")
         
-        if is_mixed_set and product.sub_style:
-            # 混合套装：取上衣和裤子尺码交集
-            top_sizes = product.main_style.sizes
-            bottom_sizes = product.sub_style.sizes
-            intersect_sizes = [s for s in top_sizes if s in bottom_sizes]
-            print(f"  混合套装: 上衣尺码={top_sizes}")
-            print(f"  混合套装: 裤子尺码={bottom_sizes}")
-            print(f"  混合套装: 尺码交集={intersect_sizes}")
+        if is_mixed_set and product.all_styles:
+            # 混合套装：所有款式尺码取交集，每个款式一个尺码表
+            all_style_sizes = [product.main_style.sizes] + [s.sizes for s in product.all_styles]
+            intersect_sizes = all_style_sizes[0]
+            for sz in all_style_sizes[1:]:
+                intersect_sizes = [s for s in intersect_sizes if s in sz]
+            print(f"  套装款式数: {product.style_count}, 尺码交集={intersect_sizes}")
             
             if intersect_sizes:
                 self._select_sizes(intersect_sizes)
             else:
-                print(f"  警告: 上衣和裤子无交集尺码，使用上衣尺码")
-                self._select_sizes(top_sizes)
+                print(f"  警告: 款式间无交集尺码，使用主款尺码")
+                self._select_sizes(all_style_sizes[0])
             time.sleep(0.5)
             
-            # 选择尺码表1(上衣) + 尺码表2(裤子)
-            self._select_size_chart_mixed_set(
-                product.main_style.style_name,
-                product.sub_style.style_name
-            )
+            # 所有款式名列表
+            all_names = [product.main_style.style_name] + [s.style_name for s in product.all_styles]
+            self._select_size_chart_mixed_set(all_names)
             time.sleep(1)
             
-            # 勾选重点展示部件（两个尺码表都要勾）
-            self._check_key_display_parts(
-                product.main_style.style_name,
-                product.sub_style.style_name
-            )
+            # 勾选重点展示部件
+            self._check_key_display_parts(*all_names[:2])  # 最多传两个
         else:
             # 非混合套装：原有逻辑
             if product.final_sizes:
@@ -1298,50 +1292,35 @@ class RpaPublisherExecutor(BaseExecutor):
                 time.sleep(0.5)
         time.sleep(0.5)
     
-    def _select_size_chart_mixed_set(self, top_style: str, bottom_style: str):
-        """混合套装：依次选择尺码表1（上衣）和尺码表2（裤子）"""
-        # 诊断：导出实际DOM结构
+    def _select_size_chart_mixed_set(self, style_names: list):
+        """混合套装：依次为每个款式选择尺码表，3件套以上自动点+添加尺码表"""
         self._dump_size_chart_debug()
         
-        info = self.page.evaluate("""() => {
-            const containers = document.querySelectorAll('.size-template-select-container');
-            const result = [];
-            containers.forEach((c, i) => {
-                const r = c.getBoundingClientRect();
-                const html = c.outerHTML.substring(0, 500);
-                const hasInput = !!c.querySelector('input');
-                const hasSelect = !!c.querySelector('.el-select');
-                const tagName = c.querySelector('.el-select') ? c.querySelector('.el-select').tagName : c.tagName;
-                result.push({idx: i, top: Math.round(r.top), hasInput, hasSelect, html});
-            });
-            return result;
-        }""")
-        print(f"  [诊断] 尺码表容器详情: {json.dumps(info, ensure_ascii=False, indent=2) if info else 'NONE'}")
+        n = len(style_names)
+        print(f"  套装 {n} 件套，逐一选择尺码表...")
         
-        # ... rest of the method
+        for i, sname in enumerate(style_names):
+            if i >= 2:
+                # 3件套起需要点"+添加尺码表"
+                self._click_add_size_chart_selector()
+            self._select_size_chart_by_index(i, sname)
+            time.sleep(0.8)
         
-        if len(info) < 2:
-            print(f"  警告: 只找到 {len(info)} 个尺码表容器，预期至少2个")
-            if len(info) >= 1:
-                # 至少选一个
-                self._select_size_chart(top_style)
-            return
-        
-        # 尺码表1（上衣: top_style）
-        print(f"  选择尺码表1: {top_style}")
-        self._select_size_chart_by_index(0, top_style)
-        time.sleep(0.8)
-        
-        # 尺码表2（裤子: bottom_style）
-        print(f"  选择尺码表2: {bottom_style}")
-        self._select_size_chart_by_index(1, bottom_style)
-        time.sleep(0.5)
-        
-        # 释放焦点：点弹窗空白区域，确保尺码表下拉彻底关闭
+        # 释放焦点
         self.page.mouse.click(10, 10)
         time.sleep(0.3)
         self.page.keyboard.press("Escape")
         time.sleep(0.3)
+    
+    def _click_add_size_chart_selector(self):
+        """点击'+添加尺码表'按钮"""
+        try:
+            add_btn = self.page.locator("span:has-text('添加尺码表'), button:has-text('添加')").first
+            if add_btn.is_visible(timeout=2000):
+                add_btn.click()
+                time.sleep(0.5)
+        except:
+            print("  警告: 未找到添加尺码表按钮")
         self.page.mouse.click(10, 10)
         time.sleep(0.3)
     

@@ -56,15 +56,16 @@ def build_product(data: dict, style_lib: list) -> tuple:
     
     style.template_name = template_name
     
-    # 混合套装：读取副款式
-    sub_style = None
+    # 混合套装：读取所有副款式
+    all_extra_styles = []
     combo_type = "single"
     if sku_class == "混合套装" and len(style_names) >= 2:
-        sub_style_name = style_names[1]
-        sub_style = get_style_by_name(style_lib, sub_style_name)
-        if not sub_style:
-            return None, f"找不到副款式「{sub_style_name}」"
-        sub_style.template_name = template_name
+        for sn in style_names[1:]:  # 第一个已经是main_style
+            extra = get_style_by_name(style_lib, sn)
+            if not extra:
+                return None, f"找不到副款式「{sn}」"
+            extra.template_name = template_name
+            all_extra_styles.append(extra)
         combo_type = "suit"
         # 套装默认2件，用户填了就用用户的
         if sku_quantity <= 1:
