@@ -87,44 +87,54 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 勾选尺码 — 先滚轮 → 再用虚拟行定位 ──
-    # 先聚焦尺码表区域，滚20次
+    # ── 7. 滚到底边扫描边勾选 ──
+    # 先聚焦尺码表区域
     try:
-        tbl_area = page.locator(".pro-virtual-table, [class*='virtual-table']").first
-        tbl_area.click(force=True, timeout=2000)
+        page.locator(".pro-virtual-table, [class*='virtual-table']").first.click(force=True, timeout=2000)
         time.sleep(0.2)
     except:
         pass
-    for i in range(20):
-        page.mouse.wheel(0, 200)
-        time.sleep(0.05)
 
-    checked = 0
-    for sz in sizes:
-        try:
-            row = page.locator(f".vue-recycle-scroller__item-view:has-text('{sz}')").first
-            cb = row.locator(".is-selection-column .jx-checkbox__inner").first
-            cb.click(force=True, timeout=3000)
-            checked += 1
-            time.sleep(0.1)
-        except:
-            pass
-    if checked == 0:
-        checked = page.evaluate("""(targets) => {
-            let n = 0;
-            const items = document.querySelectorAll('.vue-recycle-scroller__item-view');
+    # 用JS滚动+扫描
+    result = page.evaluate("""(targets) => {
+        const targetsLeft = [...targets];
+        const checked = [];
+        
+        // 找滚动容器
+        const scroller = document.querySelector('.vue-recycle-scroller, [class*="recycle-scroller"]');
+        if (!scroller) return {checked: [], reason: 'no scroller'};
+        
+        // 滚到底，每100ms检查一次可见的item
+        const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+        const step = 150;
+        for (let pos = 0; pos <= maxScroll + 200; pos += step) {
+            scroller.scrollTop = pos;
+            // 等虚拟滚动渲染
+            const start = Date.now();
+            while (Date.now() - start < 80) { /* busy wait */ }
+            
+            // 检查当前可见的item
+            const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
             for (const item of items) {
                 const txt = item.innerText.trim();
-                if (targets.some(t => txt.startsWith(t))) {
-                    const cb = item.querySelector('.jx-checkbox__inner');
-                    if (cb) { cb.click(); n++; }
+                for (let i = 0; i < targetsLeft.length; i++) {
+                    if (txt.includes(targetsLeft[i])) {
+                        const cb = item.querySelector('.jx-checkbox__inner');
+                        if (cb) {
+                            cb.click();
+                            checked.push(targetsLeft[i]);
+                            targetsLeft.splice(i, 1);
+                            break;
+                        }
+                    }
                 }
             }
-            return n;
-        }""", sizes)
-    
+            if (targetsLeft.length === 0) break;
+        }
+        return {checked, remaining: targetsLeft};
+    }""", sizes)
     s("6_sizes")
-    print(f"  [OK] 尺码勾选: {checked}/{len(sizes)}")
+    print(f"  [OK] 尺码勾选: {len(result.get('checked',[]))}/{len(sizes)} (已勾:{result.get('checked',[])}, 剩余:{result.get('remaining',[])})")
 
     # ── 8. 粘贴导入 ──
     try:
