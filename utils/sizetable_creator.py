@@ -59,23 +59,15 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.get_by_role("textbox", name="*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 2. 类目 — fill输入框 + 搜索 → 找最短文本匹配点击
+    # 2. 类目 — Ctrl+A清空+键盘输入+回车（避免fill被Vue覆盖）
     cat_kw = cat_path.split("/")[-1].strip()
     page.get_by_role("textbox", name="*类目").click()
-    time.sleep(0.3)
-    page.get_by_role("textbox", name="*类目").fill(cat_kw)
+    time.sleep(0.5)
+    page.keyboard.press("Control+A")
+    time.sleep(0.1)
+    page.keyboard.type(cat_kw)
     time.sleep(2)
-    page.evaluate("""(kw) => {
-        let best = null, bestLen = 999;
-        const nodes = document.querySelectorAll('.el-cascader-node__label, .el-cascader-menu__item, li[role="menuitem"]');
-        for (const n of nodes) {
-            const t = (n.innerText || '').trim();
-            if (t.includes(kw) && t.length < bestLen) {
-                best = n; bestLen = t.length;
-            }
-        }
-        if (best) best.click();
-    }""", cat_kw)
+    page.keyboard.press("Enter")
     time.sleep(1.5)
 
     # 3. 参数勾选
