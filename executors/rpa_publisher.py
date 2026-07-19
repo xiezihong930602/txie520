@@ -1143,6 +1143,26 @@ class RpaPublisherExecutor(BaseExecutor):
     
     def _read_product_category(self) -> str:
         """从上架页面读取当前产品的类目路径"""
+        # 先dump所有可能的类目相关DOM供诊断
+        debug_info = self.page.evaluate("""() => {
+            const result = [];
+            const formItems = document.querySelectorAll('.el-form-item');
+            for (const fi of formItems) {
+                const label = fi.querySelector('.el-form-item__label');
+                const labelText = (label?.innerText || '').trim();
+                if (labelText.includes('类目') || labelText.includes('分类') || labelText.includes('Category')) {
+                    const inner = fi.querySelector('.el-input__inner');
+                    result.push({label: labelText, inputValue: inner?.value || '', hasInput: !!inner});
+                }
+            }
+            const inputsWithVal = document.querySelectorAll('input[value*="服装"]');
+            for (const inp of inputsWithVal) {
+                result.push({type: 'input_by_value', value: inp.value});
+            }
+            return JSON.stringify(result);
+        }""")
+        print(f"  [诊断-类目字段]: {debug_info}")
+
         cat = self.page.evaluate("""() => {
             // 方法1：找包含"产品类目"的el-form-item里的值
             const formItems = document.querySelectorAll('.el-form-item');
