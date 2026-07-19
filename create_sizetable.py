@@ -81,17 +81,19 @@ def create_one(page, style_name, cat_path, size_category):
     page.get_by_role("textbox", name=u"*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 3. 类目
+    # 3. 类目 - 直接粘贴完整路径
     page.get_by_role("textbox", name=u"*类目").click()
     time.sleep(0.3)
-    page.get_by_role("textbox", name=u"*类目").fill(cat_kw)
-    time.sleep(2)
-    try:
-        page.get_by_role("listitem").filter(has_text=cat_path).first.click(timeout=5000)
-    except:
-        page.get_by_role("listitem").filter(has_text=cat_kw).first.click(timeout=5000)
+    page.get_by_role("textbox", name=u"*类目").fill(cat_path)
     time.sleep(0.5)
-    print(f"  [OK] 名称+类目")
+    # 等级联菜单弹出后选匹配项
+    try:
+        page.locator(f"li:has-text('{cat_path}')").first.click(timeout=5000)
+    except:
+        # fallback: 用最后一段关键词
+        page.get_by_role("listitem").filter(has_text=cat_path.split("/")[-1].strip()).first.click(timeout=5000)
+    time.sleep(0.5)
+    print(f"  [OK] 类目")
 
     # 4. 分类 - 用JS点Vue下拉
     try:
@@ -148,13 +150,25 @@ def create_one(page, style_name, cat_path, size_category):
 
     # 8. 粘贴导入
     try:
-        # Excel快速编辑按钮 - 用span文本匹配
         page.locator("span:has-text('Excel快速编辑')").first.click()
         time.sleep(0.5)
         page.locator("text=第二步：粘贴导入").first.click()
         time.sleep(1)
+        # 用剪贴板写入 → Ctrl+V 原生物理粘贴
+        page.evaluate("""(text) => {
+            const ta = document.querySelector('textarea');
+            if (ta) {
+                ta.focus();
+                ta.value = text;
+                ta.dispatchEvent(new Event('input', {bubbles: true}));
+                ta.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+        }""", paste_text)
+        time.sleep(0.3)
+        # 再Ctrl+V确保
         page.locator("textarea").first.click()
-        page.locator("textarea").first.fill(paste_text)
+        page.keyboard.press("Control+a")
+        page.keyboard.press("Control+v")
         time.sleep(0.5)
         page.get_by_role("button", name=u"导入").click()
         time.sleep(2)
