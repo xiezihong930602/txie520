@@ -113,8 +113,9 @@ def fill_one(page, style_name, cat_path, size_category):
         
         for (let pos = 0; pos <= maxScroll + 200; pos += step) {
             scroller.scrollTop = pos;
+            // 等待渲染——改成300ms
             const start = Date.now();
-            while (Date.now() - start < 80) { /* busy wait */ }
+            while (Date.now() - start < 300) { /* busy wait */ }
             
             const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
             for (const item of items) {
@@ -126,13 +127,9 @@ def fill_one(page, style_name, cat_path, size_category):
                         if (cb) {
                             cb.click();
                             checked.push(targetsLeft[i]);
-                            targetsLeft.splice(i, 1);
                         }
                         // 填数据
-                        const cols = dataMap[targetsLeft.length ? targetsLeft[i] : checked[checked.length-1]];
-                        if (!cols) continue;
-                        const sz = targetsLeft.length ? targetsLeft[i] : checked[checked.length-1];
-                        const colsForSize = dataMap[sz];
+                        const colsForSize = dataMap[targetsLeft[i]];
                         if (colsForSize) {
                             const inputs = item.querySelectorAll('input[type="text"]');
                             const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -143,6 +140,7 @@ def fill_one(page, style_name, cat_path, size_category):
                             }
                             filledCount++;
                         }
+                        targetsLeft.splice(i, 1);
                         break;
                     }
                 }
