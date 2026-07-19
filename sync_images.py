@@ -13,7 +13,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from data_source.feishu import FeishuDataSource, BASE_URL
+from data_source.feishu import FeishuDataSource
 from utils.image_uploader import create_uploader
 from config.settings import (
     FEISHU_BASE_TOKEN, IMAGE_BED_CONFIG,
