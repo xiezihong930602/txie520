@@ -152,6 +152,42 @@ def fill_one(page, style_name, cat_path, size_category):
     s("6_sizes")
     print(f"  [OK] 尺码勾选+填充: {len(result.get('checked',[]))}/{len(sizes)} 已勾, {result.get('filled',0)}/{len(data_rows)} 已填")
 
+    # 如果还有未填的，再滚一轮补填
+    if result.get('filled', 0) < len(data_rows):
+        remaining_sizes = result.get('remaining', [])
+        if not remaining_sizes:
+            remaining_sizes = [str(r[0]) for r in data_rows[len(result.get('checked',[])):]]
+        fill2 = page.evaluate("""(data) => {
+            const scroller = document.querySelector('.vue-recycle-scroller');
+            if (!scroller) return 0;
+            const dataMap = {};
+            data.rows.forEach(r => { dataMap[String(r[0])] = r.slice(1); });
+            let n = 0;
+            for (let pos = 0; pos < 3000; pos += 200) {
+                scroller.scrollTop = pos;
+                const start = Date.now();
+                while (Date.now() - start < 300) {}
+                const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
+                for (const item of items) {
+                    const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];
+                    const cols = dataMap[txt];
+                    if (cols) {
+                        const inputs = item.querySelectorAll('input[type="text"]');
+                        const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                        for (let j = 0; j < cols.length && j < inputs.length; j++) {
+                            ns.call(inputs[j], String(cols[j] || ''));
+                            inputs[j].dispatchEvent(new Event('input', {bubbles: true}));
+                            inputs[j].dispatchEvent(new Event('change', {bubbles: true}));
+                        }
+                        n++;
+                        delete dataMap[txt];
+                    }
+                }
+            }
+            return n;
+        }""", {"rows": data_rows})
+        print(f"  [OK] 补填: {fill2} 行")
+
     return True
 
 
