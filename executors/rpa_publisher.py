@@ -1255,21 +1255,40 @@ class RpaPublisherExecutor(BaseExecutor):
             self.page.keyboard.press("Escape")
             time.sleep(0.5)
             # 从当前上架页面读取产品类目
-            cat_path = self._read_product_category()
-            print(f"  读取到类目: {cat_path}")
+            try:
+                cat_path = self._read_product_category()
+                print(f"  读取到类目: {cat_path or '(空，将自动推断)'}")
+            except Exception as e:
+                print(f"  读取类目失败: {e}，将自动推断")
+                cat_path = ""
             # 新标签页打开尺码表管理页面
-            sz_page = self.context.new_page()
-            sz_page.goto("https://erp.91miaoshou.com/pddkj/move_collect/template_management/sizeChart",
-                         wait_until="domcontentloaded")
-            time.sleep(4)
-            from utils.sizetable_creator import create_sizetable_for_style
-            sz_ok = create_sizetable_for_style(sz_page, style_name, cat_path)
-            sz_page.close()
+            try:
+                sz_page = self.context.new_page()
+                sz_page.goto("https://erp.91miaoshou.com/pddkj/move_collect/template_management/sizeChart",
+                             wait_until="domcontentloaded")
+                time.sleep(4)
+                from utils.sizetable_creator import create_sizetable_for_style
+                sz_ok = create_sizetable_for_style(sz_page, style_name, cat_path)
+                sz_page.close()
+            except Exception as e:
+                print(f"  创建尺码表异常: {e}")
+                sz_ok = False
+                try:
+                    sz_page.close()
+                except:
+                    pass
             if sz_ok:
-                # 回到上架页面重新搜索
+                # 回到上架页面重新搜索（重新获取select_container，避免stale）
                 time.sleep(1)
+                self.page.bring_to_front()
+                select_container = self.page.locator(".size-template-select-container").first
                 select_container.click()
                 time.sleep(1.5)
+                # 点击搜索输入框
+                search_input = select_container.locator("input").first
+                if search_input.is_visible():
+                    search_input.click()
+                    time.sleep(0.2)
                 self.page.keyboard.press("Control+A")
                 time.sleep(0.1)
                 self.page.keyboard.type(style_name)
