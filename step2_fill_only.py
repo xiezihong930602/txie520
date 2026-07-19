@@ -152,13 +152,13 @@ def fill_one(page, style_name, cat_path, size_category):
         const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
         let n = 0;
         for (const item of items) {
-            const txt = item.innerText.trim();
+            const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];  // 取第一个token
             for (const row of rows) {
-                if (txt.startsWith(String(row[0]))) {
+                const sz = String(row[0]);
+                if (txt === sz) {
                     const inputs = item.querySelectorAll('input[type="text"]');
                     for (let i = 0; i < row.length - 1 && i < inputs.length; i++) {
-                        const v = String(row[i + 1] || '');
-                        inputs[i].value = v;
+                        inputs[i].value = String(row[i + 1] || '');
                         inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
                         inputs[i].dispatchEvent(new Event('change', {bubbles: true}));
                     }
