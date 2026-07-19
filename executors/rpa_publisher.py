@@ -1146,26 +1146,21 @@ class RpaPublisherExecutor(BaseExecutor):
         if hasattr(self, '_cached_category') and self._cached_category:
             return self._cached_category
         cat = self.page.evaluate("""() => {
-            // 方法1：找包含"产品类目"的el-form-item里的值
+            // 方法1：找级联选择器(input的value包含完整类目路径)
+            const inputs = document.querySelectorAll('input');
+            for (const inp of inputs) {
+                const v = (inp.value || '');
+                if (v.startsWith('服装、') && v.includes('/')) return v;
+            }
+            // 方法2：找.el-form-item的label含"类目"的
             const formItems = document.querySelectorAll('.el-form-item');
             for (const fi of formItems) {
                 const label = fi.querySelector('.el-form-item__label');
                 if (label && (label.innerText || '').includes('类目')) {
                     const inner = fi.querySelector('.el-input__inner');
-                    if (inner) return inner.value || '';
+                    if (inner && inner.value) return inner.value;
                     const txt = (fi.innerText || '').replace(label.innerText, '').trim();
-                    if (txt) return txt;
-                }
-            }
-            // 方法2：找value属性包含"服装"的input
-            const inputs = document.querySelectorAll('input[value*="服装"]');
-            if (inputs.length > 0) return inputs[0].value;
-            // 方法3：找文本包含"服装"的任意可见元素
-            const all = document.querySelectorAll('*');
-            for (const el of all) {
-                const t = (el.innerText || '').trim();
-                if (t.startsWith('服装、') && t.includes('/') && el.children.length === 0) {
-                    return t;
+                    if (txt && txt.includes('服装')) return txt;
                 }
             }
             return '';
