@@ -454,6 +454,7 @@ class RpaPublisherExecutor(BaseExecutor):
                        getattr(product, 'sku_class_override', '') == "混合套装")
         
         if is_mixed_set and product.all_styles:
+            print(f"  [流程] 进入混合套装分支: combo_type={is_mixed_set}, all_styles数量={len(product.all_styles)}, 款式名={[s.style_name for s in product.all_styles]}")
             # 混合套装：所有款式尺码取交集，每个款式一个尺码表
             all_style_sizes = [product.main_style.sizes] + [s.sizes for s in product.all_styles]
             intersect_sizes = all_style_sizes[0]
