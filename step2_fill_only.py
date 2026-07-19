@@ -138,9 +138,6 @@ def fill_one(page, style_name, cat_path, size_category):
 
     # ── 8. 粘贴导入 ──
     try:
-        import pyperclip
-        pyperclip.copy(paste_text)
-
         page.get_by_role("button", name="Excel快速编辑").click()
         time.sleep(0.5)
         page.get_by_role("menuitem", name="第一步：复制模板").click()
@@ -148,10 +145,20 @@ def fill_one(page, style_name, cat_path, size_category):
         page.get_by_role("menuitem", name="第二步：粘贴导入").click()
         time.sleep(1.5)
 
+        # Browser Clipboard API: 写入 paste_text → Ctrl+V
+        page.evaluate("""async (data) => {
+            try {
+                await navigator.clipboard.writeText(data);
+                return 'clipboard_ok';
+            } catch(e) {
+                return 'clipboard_err: ' + e.message;
+            }
+        }""", paste_text)
+        time.sleep(0.5)
+
         ta = page.locator("[role=\"dialog\"] textarea, textarea").first
         ta.dblclick()
         time.sleep(0.3)
-        page.keyboard.press("Control+a")
         page.keyboard.press("Control+v")
         time.sleep(1)
 
