@@ -95,7 +95,7 @@ def build_product(data: dict, style_lib: list) -> tuple:
         product_id=data.get("record_id", "P001"),
         main_style=style,
         combo_type=combo_type,
-        sub_style=sub_style,
+        all_styles=all_extra_styles,
         title=title,
         colors=colors,
     )
