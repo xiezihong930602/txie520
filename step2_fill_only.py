@@ -87,12 +87,21 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 勾选尺码 — 用虚拟滚动的row定位 ──
-    # 策略：找到所有 .vue-recycle-scroller__item-view 的row，按文本匹配
+    # ── 7. 勾选尺码 — 先滚轮 → 再用虚拟行定位 ──
+    # 先聚焦尺码表区域，滚20次
+    try:
+        tbl_area = page.locator(".pro-virtual-table, [class*='virtual-table']").first
+        tbl_area.click(force=True, timeout=2000)
+        time.sleep(0.2)
+    except:
+        pass
+    for i in range(20):
+        page.mouse.wheel(0, 200)
+        time.sleep(0.05)
+
     checked = 0
     for sz in sizes:
         try:
-            # 在每个可见行中找包含目标尺码的row
             row = page.locator(f".vue-recycle-scroller__item-view:has-text('{sz}')").first
             cb = row.locator(".is-selection-column .jx-checkbox__inner").first
             cb.click(force=True, timeout=3000)
@@ -100,7 +109,6 @@ def fill_one(page, style_name, cat_path, size_category):
             time.sleep(0.1)
         except:
             pass
-    # 如果上面没勾到，用JS暴力搜所有尺码cell
     if checked == 0:
         checked = page.evaluate("""(targets) => {
             let n = 0;
@@ -118,27 +126,20 @@ def fill_one(page, style_name, cat_path, size_category):
     s("6_sizes")
     print(f"  [OK] 尺码勾选: {checked}/{len(sizes)}")
 
-    # ── 7. 粘贴导入 ──
+    # ── 8. 粘贴导入 ──
     try:
-        # 先写剪贴板（Windows）
-        import subprocess
-        clip = subprocess.Popen(['clip'], stdin=subprocess.PIPE, shell=True)
-        clip.communicate(input=paste_text.encode('utf-16-le'))
-        clip.wait()
-
-        page.locator("span:has-text('Excel快速编辑')").first.click()
+        page.get_by_role("button", name="Excel快速编辑").click()
         time.sleep(0.5)
-        page.locator("text=第二步：粘贴导入").first.click()
+        page.get_by_role("menuitem", name="第二步：粘贴导入").click()
         time.sleep(1)
-
-        # Ctrl+V粘贴
-        page.locator("textarea").first.click()
+        # 找导入弹窗里的 textarea，用 Ctrl+V 粘贴
+        page.locator("[role=\"dialog\"] textarea, textarea").first.click()
         time.sleep(0.3)
         page.keyboard.press("Control+a")
         page.keyboard.press("Control+v")
         time.sleep(0.5)
         s("7_pasted")
-        print("  [OK] 粘贴(导入弹窗内, 未点导入)")
+        print("  [OK] 粘贴(导入弹窗内)")
     except Exception as e:
         print(f"  [FAIL] 粘贴: {e}")
         s("7_paste_fail")
