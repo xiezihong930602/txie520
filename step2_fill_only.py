@@ -76,58 +76,44 @@ def fill_one(page, style_name, cat_path, size_category):
     s("4_params")
     print(f"  [OK] 参数: {len(param_labels)}")
 
-    # ── 5. 取消全选 ──
+    # ── 5. 勾选参数后等重渲染 ──
+    # 参数勾选会触发尺码表重渲染
+    time.sleep(1)
+
+    # ── 6. 取消全选 —— 点表头小方块 ──
     try:
-        page.locator("th .el-checkbox__label, th .jx-checkbox__label").first.click(timeout=2000)
-        time.sleep(0.2)
-        page.locator("th .el-checkbox__label, th .jx-checkbox__label").first.click(timeout=2000)
+        hdr_cb = page.locator("th .jx-checkbox__inner, th .el-checkbox__inner").first
+        hdr_cb.click(force=True, timeout=2000)
         time.sleep(0.3)
-        print(f"  [OK] 取消全选(label)")
+        hdr_cb.click(force=True, timeout=2000)
+        time.sleep(0.3)
+        print(f"  [OK] 取消全选")
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 6. 勾选目标尺码 ──
-    # 虚拟滚动：先JS滚到目标区域，再逐行点
-    checked = page.evaluate("""(targets) => {
-        // 找到虚拟滚动容器
-        const scroller = document.querySelector('.vue-recycle-scroller, .pro-virtual-scroll, [class*="virtual-scroll"], [class*="recycle-scroller"]');
-        if (!scroller) return 0;
-        
-        // 找所有尺码行的checkbox（包括不可见的）
-        const allRows = scroller.querySelectorAll('tr, .pro-virtual-table__row, [class*="table__row"]');
-        
-        // 先暴力滚动到底部看全部数据
-        let maxTop = 0;
-        const container = scroller.querySelector('.vue-recycle-scroller__item-wrapper, [class*="item-wrapper"], tbody') || scroller;
-        
-        let n = 0;
-        // 分批滚：每次滚500px，检查当前可见行
-        for (let scrollY = 0; scrollY < 5000; scrollY += 400) {
-            container.style.transform = 'translateY(-' + scrollY + 'px)';
-            scroller.scrollTop = scrollY;
-            // 等渲染
-            // 检查当前可见的checkbox
-            const cbs = scroller.querySelectorAll('.jx-checkbox__inner, .el-checkbox__inner');
-            for (const cb of cbs) {
-                if (cb.getBoundingClientRect().height < 5) continue;
-                // 找同行内的尺码文本
-                const row = cb.closest('tr') || cb.closest('[class*="row"]');
-                if (!row) continue;
-                const txt = (row.textContent || '').trim();
-                for (const t of targets) {
-                    if (txt.includes(t)) {
-                        cb.click();
-                        n++;
-                        targets = targets.filter(x => x !== t); // 去重
-                        break;
-                    }
-                }
-            }
-            if (n >= targets.length + targets.length) break;
-        }
-        return n;
-    }""", sizes)
-    time.sleep(1)
+    # ── 7. 勾选尺码 — PageDown滚动 + 逐行匹配 ──
+    try:
+        # 先点表格区域聚焦
+        page.locator(".jx-dialog__wrapper td, .el-dialog__wrapper td").first.click(force=True, timeout=2000)
+        time.sleep(0.2)
+    except:
+        pass
+    
+    # 用 PageDown 滚 10 次
+    for i in range(10):
+        page.keyboard.press("PageDown")
+        time.sleep(0.15)
+
+    checked = 0
+    for sz in sizes:
+        try:
+            row = page.locator(f"tr:has-text('{sz}')").first
+            cb = row.locator(".jx-checkbox__inner, .el-checkbox__inner").first
+            cb.click(force=True, timeout=3000)
+            checked += 1
+            time.sleep(0.1)
+        except:
+            pass
     s("6_sizes")
     print(f"  [OK] 尺码勾选: {checked}/{len(sizes)}")
 
