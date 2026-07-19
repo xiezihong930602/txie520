@@ -1445,9 +1445,23 @@ class RpaPublisherExecutor(BaseExecutor):
                 time.sleep(0.1)
                 self.page.keyboard.type(style_name)
                 time.sleep(1.2)
-                self.page.evaluate(f"(name) => {{ const all = document.querySelectorAll('li, [class*=\"dropdown-item\"]'); for (const item of all) {{ if ((item.innerText||'').includes(name) && item.getBoundingClientRect().height>10) {{ item.click(); break; }} }} }}", style_name)
+                # JS点击搜索结果
+                clicked = self.page.evaluate(f"""(name) => {{
+                    const all = document.querySelectorAll('li, [class*="dropdown-item"]');
+                    for (const item of all) {{
+                        if ((item.innerText||'').includes(name) && item.getBoundingClientRect().height>10) {{
+                            item.click(); return true;
+                        }}
+                    }}
+                    return false;
+                }}""", style_name)
+                if not clicked:
+                    print(f"  警告: JS未找到搜索结果，尝试keyboard Enter")
+                    self.page.keyboard.press("Enter")
                 time.sleep(0.5)
                 print(f"  尺码表{index+1}: {style_name} (已创建)")
+            else:
+                print(f"  尺码表{index+1}: 创建失败")
     
     def _check_key_display_parts(self, top_name: str, bottom_name: str):
         """勾选重点展示部件：多选下拉，点选项勾选"""
