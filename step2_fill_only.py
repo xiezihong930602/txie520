@@ -95,7 +95,7 @@ def fill_one(page, style_name, cat_path, size_category):
     except:
         pass
 
-    # 用JS滚动+扫描勾选 + 同时填数据
+    # 用JS滚动+扫描勾选 + 同时填数据。不因"全选"而提前退出——滚到底才停。
     result = page.evaluate("""(targets_and_data) => {
         const targets = targets_and_data.sizes;
         const dataRows = targets_and_data.rows;
@@ -108,62 +108,53 @@ def fill_one(page, style_name, cat_path, size_category):
         if (!scroller) return {checked: [], filled: 0, reason: 'no scroller'};
         
         const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-        const step = 150;
+        const step = 200;
         let filledCount = 0;
         
-        for (let pos = 0; pos <= maxScroll + 200; pos += step) {
+        for (let pos = 0; pos <= Math.max(maxScroll + 400, 5000); pos += step) {
             scroller.scrollTop = pos;
-            // 等待渲染——改成300ms
             const start = Date.now();
-            while (Date.now() - start < 300) { /* busy wait */ }
+            while (Date.now() - start < 300) { /* wait */ }
             
             const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
             for (const item of items) {
                 const txt = item.innerText.trim();
+                // 勾选
                 for (let i = 0; i < targetsLeft.length; i++) {
                     if (txt.includes(targetsLeft[i])) {
-                        // 勾选
                         const cb = item.querySelector('.jx-checkbox__inner');
-                        if (cb) {
-                            cb.click();
-                            checked.push(targetsLeft[i]);
-                        }
-                        // 填数据
-                        const colsForSize = dataMap[targetsLeft[i]];
-                        if (colsForSize) {
-                            const inputs = item.querySelectorAll('input[type="text"]');
-                            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                            for (let j = 0; j < colsForSize.length && j < inputs.length; j++) {
-                                nativeSetter.call(inputs[j], String(colsForSize[j] || ''));
-                                inputs[j].dispatchEvent(new Event('input', {bubbles: true}));
-                                inputs[j].dispatchEvent(new Event('change', {bubbles: true}));
-                            }
-                            filledCount++;
-                        }
-                        targetsLeft.splice(i, 1);
-                        break;
+                        if (cb) { cb.click(); checked.push(targetsLeft[i]); targetsLeft.splice(i, 1); break; }
                     }
                 }
+                // 填数据 —— 用split首token匹配
+                const short = txt.split(/[\\s\\n]+/)[0];
+                const cols = dataMap[short];
+                if (cols) {
+                    const inputs = item.querySelectorAll('input[type="text"]');
+                    const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                    for (let j = 0; j < cols.length && j < inputs.length; j++) {
+                        ns.call(inputs[j], String(cols[j] || ''));
+                        inputs[j].dispatchEvent(new Event('input', {bubbles: true}));
+                    }
+                    filledCount++;
+                    delete dataMap[short];
+                }
             }
-            if (targetsLeft.length === 0) break;
         }
         return {checked, remaining: targetsLeft, filled: filledCount};
     }""", {"sizes": sizes, "rows": data_rows})
     s("6_sizes")
     print(f"  [OK] 尺码勾选+填充: {len(result.get('checked',[]))}/{len(sizes)} 已勾, {result.get('filled',0)}/{len(data_rows)} 已填")
 
-    # 如果还有未填的，再滚一轮补填
+    # 如果还有未填的，第二轮只填数据不勾选
     if result.get('filled', 0) < len(data_rows):
-        remaining_sizes = result.get('remaining', [])
-        if not remaining_sizes:
-            remaining_sizes = [str(r[0]) for r in data_rows[len(result.get('checked',[])):]]
         fill2 = page.evaluate("""(data) => {
             const scroller = document.querySelector('.vue-recycle-scroller');
             if (!scroller) return 0;
             const dataMap = {};
             data.rows.forEach(r => { dataMap[String(r[0])] = r.slice(1); });
             let n = 0;
-            for (let pos = 0; pos < 3000; pos += 200) {
+            for (let pos = 0; pos < 5000; pos += 200) {
                 scroller.scrollTop = pos;
                 const start = Date.now();
                 while (Date.now() - start < 300) {}
@@ -176,8 +167,6 @@ def fill_one(page, style_name, cat_path, size_category):
                         const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
                         for (let j = 0; j < cols.length && j < inputs.length; j++) {
                             ns.call(inputs[j], String(cols[j] || ''));
-                            inputs[j].dispatchEvent(new Event('input', {bubbles: true}));
-                            inputs[j].dispatchEvent(new Event('change', {bubbles: true}));
                         }
                         n++;
                         delete dataMap[txt];
