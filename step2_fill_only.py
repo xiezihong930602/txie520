@@ -111,17 +111,22 @@ def fill_one(page, style_name, cat_path, size_category):
         for item in items:
             try:
                 txt = item.inner_text().strip()
-            except:
+            except Exception as ex:
+                print(f"  [ERR] inner_text: {ex}")
                 continue
             short = txt.split()[0] if txt.split() else txt
             if short in remaining:
-                inputs = item.locator("input[type=\"text\"]").all()
-                cols = data_map[short]
-                for i in range(len(cols)):
-                    if i < len(inputs):
-                        inputs[i].fill(str(cols[i] or ""), timeout=2000)
-                remaining.discard(short)
-                checked.add(short)
+                try:
+                    inputs = item.locator("input[type=\"text\"]").all()
+                    cols = data_map[short]
+                    for i in range(len(cols)):
+                        if i < len(inputs):
+                            inputs[i].fill(str(cols[i] or ""), timeout=2000)
+                    remaining.discard(short)
+                    checked.add(short)
+                    print(f"    filled: {short}")
+                except Exception as ex:
+                    print(f"    [ERR] fill {short}: {ex}")
         
         if not remaining:
             break
