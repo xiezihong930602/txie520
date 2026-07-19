@@ -87,49 +87,41 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 键盘流：ArrowDown逐行扫描，找到就原子填充（JS内勾选+填值，无串行）──
+    # ── 7. Python滚+JS原子填充：每200px设scrollTop → sleep给浏览器渲染 → 单次evaluate扫描+勾选+fill ──
     checked = set()
     remaining = set(str(r[0]) for r in data_rows)
     data_map = {str(r[0]): r[1:] for r in data_rows}
 
-    # 先聚焦表格区域
-    try:
-        page.locator(".pro-virtual-table, [class*='virtual-table']").first.click(force=True, timeout=2000)
-        time.sleep(0.2)
-    except:
-        pass
-
-    for step in range(200):  # 最多200次按键
-        page.keyboard.press("ArrowDown")
-        time.sleep(0.08)
-        if step % 3 == 0:  # 每3次ArrowDown用PageDown加速
-            page.keyboard.press("PageDown")
+    for pos in range(0, 10000, 200):
+        page.evaluate(f"document.querySelector('.vue-recycle-scroller').scrollTop = {pos}")
         time.sleep(0.3)
 
-        # JS原子操作：找可见区域中匹配的尺码 → 勾选 + fill
-        for sz in list(remaining):
-            done = page.evaluate("""(args) => {
-                const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                const items = document.querySelectorAll('.vue-recycle-scroller__item-view');
-                for (const item of items) {
-                    const txt = item.innerText.trim().split(/[\s\n]+/)[0];
-                    if (txt === args.sz) {
-                        const cb = item.querySelector('.jx-checkbox__inner');
-                        if (cb) cb.click();
-                        const inputs = item.querySelectorAll('input[type="text"]');
-                        const cols = args.cols;
+        result = page.evaluate("""(args) => {
+            const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+            const filled = [];
+            const items = args.remaining.length ? document.querySelectorAll('.vue-recycle-scroller__item-view') : [];
+            for (const item of items) {
+                const txt = item.innerText.trim().split(/[\s\n]+/)[0];
+                if (args.remaining.includes(txt)) {
+                    const cb = item.querySelector('.jx-checkbox__inner');
+                    if (cb) cb.click();
+                    const inputs = item.querySelectorAll('input[type="text"]');
+                    const cols = args.dataMap[txt];
+                    if (cols) {
                         for (let j = 0; j < cols.length && j < inputs.length; j++) {
                             ns.call(inputs[j], String(cols[j] || ''));
                         }
-                        return true;
                     }
+                    filled.push(txt);
                 }
-                return false;
-            }""", {"sz": sz, "cols": data_map[sz]})
-            if done:
-                remaining.discard(sz)
-                checked.add(sz)
-                print(f"    filled: {sz}")
+            }
+            return filled;
+        }""", {"remaining": list(remaining), "dataMap": data_map})
+
+        for sz in result:
+            remaining.discard(sz)
+            checked.add(sz)
+            print(f"    filled: {sz}")
 
         if not remaining:
             break
