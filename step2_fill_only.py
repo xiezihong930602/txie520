@@ -142,14 +142,31 @@ def fill_one(page, style_name, cat_path, size_category):
         time.sleep(0.5)
         page.get_by_role("menuitem", name="第二步：粘贴导入").click()
         time.sleep(1)
-        # 点 textarea → insertText 逐字输入
-        page.locator("[role=\"dialog\"] textarea, textarea").first.click()
-        time.sleep(0.3)
-        page.keyboard.press("Control+a")
-        page.keyboard.insertText(paste_text)
-        time.sleep(1)
+        # Dump textarea 真实属性
+        info = page.evaluate("""() => {
+            const ta = document.querySelector('[role=\"dialog\"] textarea, textarea');
+            if (!ta) return 'NOT FOUND';
+            return {
+                tag: ta.tagName,
+                type: ta.type,
+                readonly: ta.readOnly,
+                disabled: ta.disabled,
+                placeholder: ta.placeholder,
+                className: ta.className?.substring(0, 80),
+                value_len: ta.value.length,
+                vue_model: ta.__vue__ ? Object.keys(ta.__vue__).slice(0,10) : 'no __vue__',
+                contenteditable: ta.getAttribute('contenteditable'),
+                parent_tag: ta.parentElement?.tagName,
+                parent_class: ta.parentElement?.className?.substring(0, 80)
+            };
+        }""")
+        print(f"  [DUMP] textarea: {info}")
+
+        # Playwright 直接填
+        page.locator("[role=\"dialog\"] textarea, textarea").first.fill(paste_text)
+        time.sleep(0.5)
         s("7_pasted")
-        print("  [OK] 粘贴(insertText)")
+        print("  [OK] 粘贴(fill)")
     except Exception as e:
         print(f"  [FAIL] 粘贴: {e}")
         s("7_paste_fail")
