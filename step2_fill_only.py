@@ -112,7 +112,7 @@ def fill_one(page, style_name, cat_path, size_category):
                 const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
                 const items = document.querySelectorAll('.vue-recycle-scroller__item-view');
                 for (const item of items) {
-                    const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];
+                    const txt = item.innerText.trim().split(/[\s\n]+/)[0];
                     if (txt === args.sz) {
                         const cb = item.querySelector('.jx-checkbox__inner');
                         if (cb) cb.click();
