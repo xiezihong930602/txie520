@@ -34,24 +34,18 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.get_by_role("textbox", name="*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 2. 类目 — fill搜索后用JS直接点级联面板第一个结果
-    cat_kw = cat_path.split("/")[-1].strip()
+    # 2. 类目 — 完整路径搜索(唯一结果) + 点击
     page.get_by_role("textbox", name="*类目").click()
     time.sleep(0.3)
-    page.get_by_role("textbox", name="*类目").fill(cat_kw)
+    page.get_by_role("textbox", name="*类目").fill(cat_path)
     time.sleep(2)
     page.evaluate("""() => {
         const panels = document.querySelectorAll('.el-cascader-panel, .el-cascader__suggestion-panel, .el-cascader__dropdown');
         for (const panel of panels) {
             if (panel.getBoundingClientRect().height > 10) {
-                const item = panel.querySelector('.el-cascader-node__label, li, [class*="suggestion"]');
+                const item = panel.querySelector('.el-cascader-node__label, li');
                 if (item) { item.click(); return true; }
             }
-        }
-        // fallback: any visible element with the keyword
-        const all = document.querySelectorAll('.el-cascader-node__label, li');
-        for (const el of all) {
-            if (el.getBoundingClientRect().height > 5) { el.click(); return true; }
         }
         return false;
     }""")
