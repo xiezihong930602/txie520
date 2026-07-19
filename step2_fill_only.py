@@ -136,6 +136,8 @@ def fill_one(page, style_name, cat_path, size_category):
     s("6_sizes")
     print(f"  [OK] 尺码勾选: {len(result.get('checked',[]))}/{len(sizes)} (已勾:{result.get('checked',[])}, 剩余:{result.get('remaining',[])})")
 
+    print(f"  [DEBUG] data_rows={data_rows}")
+
     # ── 8. 逐行填写数据(放弃粘贴导入) ──
     # 跳过"复制模板""粘贴导入"菜单 → 直接在弹窗内的表格input里填数据
     # data_rows 格式: [[size, col1, col2, col3, col4], ...]
