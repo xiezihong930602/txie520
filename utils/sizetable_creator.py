@@ -98,7 +98,21 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     except:
         pass
 
-    # 5. 两阶段填充
+    # 5. 先读表头列顺序，构建列名→索引映射
+    col_map = page.evaluate("""(params) => {
+        const result = {};
+        const headers = document.querySelectorAll('.pro-virtual-table__header .pro-virtual-table__header-cell, .el-table__header th');
+        headers.forEach((th, i) => {
+            const txt = (th.innerText || '').trim();
+            for (const p of params) {
+                if (txt.includes(p) || p.includes(txt)) { result[p] = i; break; }
+            }
+        });
+        return result;
+    }""", param_labels)
+    print(f"    列映射: {col_map}")
+
+    # 6. 两阶段填充（按列映射填正确位置）
     remaining = set(sizes)
     for i in range(80):
         page.evaluate("(p) => document.querySelector('.vue-recycle-scroller').scrollTop = p", i * 150)
@@ -124,18 +138,23 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
                     const inputs = item.querySelectorAll('input[type="text"]');
                     const cols = args.dataMap[txt];
                     if (cols && inputs.length > 0 && !inputs[0].disabled) {
-                        for (let j = 0; j < cols.length && j < inputs.length; j++) {
-                            const inp = inputs[j];
-                            inp.focus();
-                            inp.select();
-                            document.execCommand('insertText', false, String(cols[j] || ''));
+                        for (let j = 0; j < cols.length; j++) {
+                            // 按列映射找正确的input索引
+                            const param = args.paramLabels[j];
+                            const targetIdx = args.colMap[param];
+                            if (targetIdx !== undefined && targetIdx < inputs.length) {
+                                const inp = inputs[targetIdx];
+                                inp.focus();
+                                inp.select();
+                                document.execCommand('insertText', false, String(cols[j] || ''));
+                            }
                         }
                         filled.push(txt);
                     }
                 }
             }
             return filled;
-        }""", {"remaining": list(remaining), "dataMap": data_map})
+        }""", {"remaining": list(remaining), "dataMap": data_map, "colMap": col_map, "paramLabels": param_labels})
 
         for sz in result:
             remaining.discard(sz)
