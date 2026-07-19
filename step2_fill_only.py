@@ -138,6 +138,17 @@ def fill_one(page, style_name, cat_path, size_category):
     s("6_sizes")
     print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({sorted(checked)})")
 
+    # ── 8. 保存 ──
+    try:
+        page.get_by_role("button", name="保存").click(force=True)
+        time.sleep(3)
+        # 验证保存成功：弹窗关闭且列表中出现模板名
+        body = page.inner_text("body")
+        ok = style_name in body and "创建尺码表模板" in body
+        print(f"  {'[SAVED]' if ok else '[WARN]'} {style_name}")
+    except Exception as e:
+        print(f"  [FAIL] 保存: {e}")
+
     return True
 
 
