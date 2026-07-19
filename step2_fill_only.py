@@ -123,12 +123,23 @@ def fill_one(page, style_name, cat_path, size_category):
     }""")
     time.sleep(0.5)
 
-    # 阶段3: 逐个scroll_into_view + fill
+    # 阶段3: JS查找item中匹配的尺码 → 直接用Python端evaluate获取itemNode → Playwright fill
     checked = []
     for row in data_rows:
         sz = str(row[0])
         try:
-            item = page.locator(f".vue-recycle-scroller__item-view:has-text('{sz}')").first
+            # 在JS里找到该尺码对应的item节点ID，然后传回Python操作
+            item_idx = page.evaluate("""(target) => {
+                const items = document.querySelectorAll('.vue-recycle-scroller__item-view');
+                for (let i = 0; i < items.length; i++) {
+                    const txt = items[i].innerText.trim().split(/[\\s\\n]+/)[0];
+                    if (txt === target) return i;
+                }
+                return -1;
+            }""", sz)
+            if item_idx < 0:
+                continue
+            item = page.locator(".vue-recycle-scroller__item-view").nth(item_idx)
             item.scroll_into_view_if_needed(timeout=3000)
             time.sleep(0.3)
             item.locator(".jx-checkbox__inner").first.click(force=True, timeout=1000)
