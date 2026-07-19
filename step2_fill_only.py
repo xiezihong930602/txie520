@@ -95,76 +95,64 @@ def fill_one(page, style_name, cat_path, size_category):
     except:
         pass
 
-    # 用JS滚动+扫描
-    result = page.evaluate("""(targets) => {
+    # 用JS滚动+扫描勾选 + 同时填数据
+    result = page.evaluate("""(targets_and_data) => {
+        const targets = targets_and_data.sizes;
+        const dataRows = targets_and_data.rows;
         const targetsLeft = [...targets];
         const checked = [];
+        const dataMap = {};
+        dataRows.forEach(r => { dataMap[String(r[0])] = r.slice(1); });
         
-        // 找滚动容器
         const scroller = document.querySelector('.vue-recycle-scroller, [class*="recycle-scroller"]');
-        if (!scroller) return {checked: [], reason: 'no scroller'};
+        if (!scroller) return {checked: [], filled: 0, reason: 'no scroller'};
         
-        // 滚到底，每100ms检查一次可见的item
         const maxScroll = scroller.scrollHeight - scroller.clientHeight;
         const step = 150;
+        let filledCount = 0;
+        
         for (let pos = 0; pos <= maxScroll + 200; pos += step) {
             scroller.scrollTop = pos;
-            // 等虚拟滚动渲染
             const start = Date.now();
             while (Date.now() - start < 80) { /* busy wait */ }
             
-            // 检查当前可见的item
             const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
             for (const item of items) {
                 const txt = item.innerText.trim();
                 for (let i = 0; i < targetsLeft.length; i++) {
                     if (txt.includes(targetsLeft[i])) {
+                        // 勾选
                         const cb = item.querySelector('.jx-checkbox__inner');
                         if (cb) {
                             cb.click();
                             checked.push(targetsLeft[i]);
                             targetsLeft.splice(i, 1);
-                            break;
                         }
+                        // 填数据
+                        const cols = dataMap[targetsLeft.length ? targetsLeft[i] : checked[checked.length-1]];
+                        if (!cols) continue;
+                        const sz = targetsLeft.length ? targetsLeft[i] : checked[checked.length-1];
+                        const colsForSize = dataMap[sz];
+                        if (colsForSize) {
+                            const inputs = item.querySelectorAll('input[type="text"]');
+                            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                            for (let j = 0; j < colsForSize.length && j < inputs.length; j++) {
+                                nativeSetter.call(inputs[j], String(colsForSize[j] || ''));
+                                inputs[j].dispatchEvent(new Event('input', {bubbles: true}));
+                                inputs[j].dispatchEvent(new Event('change', {bubbles: true}));
+                            }
+                            filledCount++;
+                        }
+                        break;
                     }
                 }
             }
             if (targetsLeft.length === 0) break;
         }
-        return {checked, remaining: targetsLeft};
-    }""", sizes)
+        return {checked, remaining: targetsLeft, filled: filledCount};
+    }""", {"sizes": sizes, "rows": data_rows})
     s("6_sizes")
-    print(f"  [OK] 尺码勾选: {len(result.get('checked',[]))}/{len(sizes)} (已勾:{result.get('checked',[])}, 剩余:{result.get('remaining',[])})")
-
-    print(f"  [DEBUG] data_rows={data_rows}")
-
-    # ── 8. 逐行填写数据(Playwright端鼠标滚轮+Python定位) ──
-    # 先滚到底部（120区域）
-    tbl = page.locator(".vue-recycle-scroller")
-    tbl.click(force=True, timeout=2000)
-    time.sleep(0.3)
-    
-    # 滚20次, 每次滚200px
-    for i in range(20):
-        page.mouse.wheel(0, 200)
-        time.sleep(0.08)
-    time.sleep(1)
-    
-    filled = 0
-    for row in data_rows:
-        sz = row[0]
-        try:
-            # 找包含该尺码文本的row, 填inputs
-            item = page.locator(f".vue-recycle-scroller__item-view:has-text('{sz}')").first
-            inputs = item.locator("input[type=\"text\"]").all()
-            for i in range(1, len(row)):
-                if i - 1 < len(inputs):
-                    inputs[i - 1].fill(str(row[i]), timeout=2000)
-            filled += 1
-        except Exception as e:
-            pass
-    s("8_filled")
-    print(f"  [OK] 逐行填充: {filled}/{len(data_rows)} 行")
+    print(f"  [OK] 尺码勾选+填充: {len(result.get('checked',[]))}/{len(sizes)} 已勾, {result.get('filled',0)}/{len(data_rows)} 已填")
 
     return True
 
