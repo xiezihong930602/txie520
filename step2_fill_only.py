@@ -158,8 +158,9 @@ def fill_one(page, style_name, cat_path, size_category):
                     const row = rows.find(r => String(r[0]) === txt);
                     if (row) {
                         const inputs = item.querySelectorAll('input[type="text"]');
+                        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
                         for (let i = 0; i < row.length - 1 && i < inputs.length; i++) {
-                            inputs[i].value = String(row[i + 1] || '');
+                            nativeSetter.call(inputs[i], String(row[i + 1] || ''));
                             inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
                             inputs[i].dispatchEvent(new Event('change', {bubbles: true}));
                         }
