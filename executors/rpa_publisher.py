@@ -1417,8 +1417,12 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  未找到尺码表{index+1}: {style_name}，自动创建...")
             self.page.keyboard.press("Escape")
             time.sleep(0.5)
-            # 混合套装不用读页面类目 — 走款式名推断（上衣→男童时尚帽衫，裤子→男童下装）
-            cat_path = ""
+            try:
+                cat_path = self._read_product_category()
+                print(f"  读取到类目: {cat_path or '(空)'}")
+            except Exception as e:
+                print(f"  读取类目失败: {e}")
+                cat_path = ""
             try:
                 sz_page = self.context.new_page()
                 sz_page.goto("https://erp.91miaoshou.com/pddkj/move_collect/template_management/sizeChart",
