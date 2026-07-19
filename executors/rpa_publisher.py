@@ -1424,7 +1424,7 @@ class RpaPublisherExecutor(BaseExecutor):
                 self.page.bring_to_front()
                 # 点同步刷新尺码表列表
                 try:
-                    self.page.locator("button:has-text('同步'), span:has-text('同步')").first.click(timeout=3000)
+                    self.page.locator('button, span, a, div').filter(has_text='同步').first.click(timeout=3000)
                     time.sleep(2)
                 except:
                     pass
