@@ -59,28 +59,30 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.get_by_role("textbox", name="*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 2. 类目 — JS直接操作native input设值+触发搜索事件
-    cat_kw = cat_path.split("/")[-1].strip()
-    page.evaluate("""(kw) => {
-        // 找类目级联选择器的input
-        const formItems = document.querySelectorAll('.el-form-item');
-        for (const fi of formItems) {
-            const label = fi.querySelector('.el-form-item__label');
-            if (label && (label.innerText || '').includes('类目')) {
-                const input = fi.querySelector('input');
-                if (input) {
-                    const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                    ns.call(input, kw);
-                    input.dispatchEvent(new Event('input', {bubbles: true}));
-                    input.dispatchEvent(new Event('change', {bubbles: true}));
-                    input.focus();
+    # 2. 类目 — 绕过搜索框，逐级展开菜单点路径节点
+    path_parts = [p.strip() for p in cat_path.split("/") if p.strip()]
+    page.get_by_role("textbox", name="*类目").click()
+    time.sleep(0.8)
+    
+    for part in path_parts:
+        clicked = page.evaluate("""(label) => {
+            // 找级联菜单当前可见面板中匹配的节点
+            const menus = document.querySelectorAll('.el-cascader-menu');
+            for (const menu of menus) {
+                const nodes = menu.querySelectorAll('.el-cascader-node');
+                for (const node of nodes) {
+                    const nodeLabel = node.querySelector('.el-cascader-node__label');
+                    if (nodeLabel && (nodeLabel.innerText || '').trim() === label) {
+                        nodeLabel.click();
+                        return true;
+                    }
                 }
             }
-        }
-    }""", cat_kw)
-    time.sleep(2)
-    page.keyboard.press("Enter")
-    time.sleep(1.5)
+            return false;
+        }""", part)
+        time.sleep(0.5)
+    
+    time.sleep(1)
 
     # 3. 参数勾选
     for pl in param_labels:
