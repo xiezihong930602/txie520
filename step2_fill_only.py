@@ -95,87 +95,33 @@ def fill_one(page, style_name, cat_path, size_category):
     except:
         pass
 
-    # 用JS滚动+扫描勾选 + 同时填数据。不因"全选"而提前退出——滚到底才停。
-    result = page.evaluate("""(targets_and_data) => {
-        const targets = targets_and_data.sizes;
-        const dataRows = targets_and_data.rows;
-        const targetsLeft = [...targets];
-        const checked = [];
-        const dataMap = {};
-        dataRows.forEach(r => { dataMap[String(r[0])] = r.slice(1); });
-        
-        const scroller = document.querySelector('.vue-recycle-scroller, [class*="recycle-scroller"]');
-        if (!scroller) return {checked: [], filled: 0, reason: 'no scroller'};
-        
-        const MIN_SCROLL = 5000;
-        const step = 250;
-        let filledCount = 0;
-        
-        for (let pos = 0; pos <= MIN_SCROLL; pos += step) {
-            scroller.scrollTop = pos;
-            const start = Date.now();
-            while (Date.now() - start < 300) { /* wait */ }
-            
-            const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
-            for (const item of items) {
-                const txt = item.innerText.trim();
-                // 勾选
-                for (let i = 0; i < targetsLeft.length; i++) {
-                    if (txt.includes(targetsLeft[i])) {
-                        const cb = item.querySelector('.jx-checkbox__inner');
-                        if (cb) { cb.click(); checked.push(targetsLeft[i]); targetsLeft.splice(i, 1); break; }
-                    }
-                }
-                // 填数据 —— 用split首token匹配
-                const short = txt.split(/[\\s\\n]+/)[0];
-                const cols = dataMap[short];
-                if (cols) {
-                    const inputs = item.querySelectorAll('input[type="text"]');
-                    const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                    for (let j = 0; j < cols.length && j < inputs.length; j++) {
-                        ns.call(inputs[j], String(cols[j] || ''));
-                        inputs[j].dispatchEvent(new Event('input', {bubbles: true}));
-                    }
-                    filledCount++;
-                    delete dataMap[short];
-                }
-            }
-        }
-        return {checked, remaining: targetsLeft, filled: filledCount};
-    }""", {"sizes": sizes, "rows": data_rows})
+    # ── 7. Python端滚动+填充（彻底放弃JS all-in-one）──
+    checked = []
+    vt = page.locator(".vue-recycle-scroller").first
+    
+    # 步骤A: 滚到底一次，让虚拟表格加载完整数据
+    vt.evaluate("el => el.scrollTop = 99999")
+    time.sleep(2)
+    
+    # 步骤B: 逐行用 Playwright fill
+    for row in data_rows:
+        sz = str(row[0])
+        try:
+            # 找到该尺码的 input 单元格。row结构: tr内多个input[type="text"]
+            # 用尺码文本定位该行
+            row_el = page.locator(f"tr:has-text('{sz}'), .vue-recycle-scroller__item-view:has-text('{sz}')").first
+            # 确保可见
+            row_el.scroll_into_view_if_needed(timeout=5000)
+            time.sleep(0.3)
+            inputs = row_el.locator("input[type=\"text\"]").all()
+            for i in range(1, len(row)):
+                if i - 1 < len(inputs):
+                    inputs[i - 1].fill(str(row[i] or ""), timeout=2000)
+            checked.append(sz)
+        except Exception as e:
+            pass
     s("6_sizes")
-    print(f"  [OK] 尺码勾选+填充: {len(result.get('checked',[]))}/{len(sizes)} 已勾, {result.get('filled',0)}/{len(data_rows)} 已填")
-
-    # 如果还有未填的，第二轮只填数据不勾选
-    if result.get('filled', 0) < len(data_rows):
-        fill2 = page.evaluate("""(data) => {
-            const scroller = document.querySelector('.vue-recycle-scroller');
-            if (!scroller) return 0;
-            const dataMap = {};
-            data.rows.forEach(r => { dataMap[String(r[0])] = r.slice(1); });
-            let n = 0;
-            for (let pos = 0; pos < 5000; pos += 200) {
-                scroller.scrollTop = pos;
-                const start = Date.now();
-                while (Date.now() - start < 300) {}
-                const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
-                for (const item of items) {
-                    const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];
-                    const cols = dataMap[txt];
-                    if (cols) {
-                        const inputs = item.querySelectorAll('input[type="text"]');
-                        const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                        for (let j = 0; j < cols.length && j < inputs.length; j++) {
-                            ns.call(inputs[j], String(cols[j] || ''));
-                        }
-                        n++;
-                        delete dataMap[txt];
-                    }
-                }
-            }
-            return n;
-        }""", {"rows": data_rows})
-        print(f"  [OK] 补填: {fill2} 行")
+    print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({checked})")
 
     return True
 
