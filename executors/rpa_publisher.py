@@ -45,6 +45,8 @@ class RpaPublisherExecutor(BaseExecutor):
             self._open_create_page()
             self._select_shop("Noble Boys")
             self._apply_template(product.template_name)
+            # 模板选完后立刻读类目（此时在"类别&属性"标签页）
+            self._cached_category = self._read_product_category()
             self._fill_variable_attributes(product)
             self._fill_basic_info(product)
             self._fill_sku_info(product)
@@ -1137,7 +1139,9 @@ class RpaPublisherExecutor(BaseExecutor):
         time.sleep(0.5)
     
     def _read_product_category(self) -> str:
-        """从上架页面读取当前产品的类目路径"""
+        """从上架页面读取当前产品的类目路径（优先返回缓存值）"""
+        if hasattr(self, '_cached_category') and self._cached_category:
+            return self._cached_category
         cat = self.page.evaluate("""() => {
             // 方法1：找包含"产品类目"的el-form-item里的值
             const formItems = document.querySelectorAll('.el-form-item');
