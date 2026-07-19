@@ -87,35 +87,43 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 滚动+勾选 + 逐行填充(分离两步) ──
-    # 第一步: 一次性滚到底，勾选所有目标尺码
-    page.evaluate("""(targets) => {
-        const scroller = document.querySelector('.vue-recycle-scroller');
-        if (!scroller) return;
-        scroller.scrollTop = 0;
-        while (scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight) {
-            scroller.scrollTop += 400;
-            const start = Date.now();
-            while (Date.now() - start < 300) {}
-            const items = scroller.querySelectorAll('.vue-recycle-scroller__item-view');
-            for (const item of items) {
-                const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];
-                if (targets.includes(txt)) {
-                    const cb = item.querySelector('.jx-checkbox__inner');
-                    if (cb) cb.click();
-                }
-            }
-        }
-    }""", sizes)
-    time.sleep(1)
+    # ── 7. 三段式填充 ──
+    # 阶段1: Python端分段滚到底，每步sleep让浏览器渲染 → 勾选所有目标
+    last_scroll = -1
+    pos = 0
+    while True:
+        cur = page.evaluate("""(p) => {
+            const s = document.querySelector('.vue-recycle-scroller');
+            if (!s) return -1;
+            s.scrollTop = p;
+            return s.scrollTop;
+        }""", pos)
+        if cur == last_scroll and pos > 200:
+            break
+        last_scroll = cur
+        pos += 200
+        time.sleep(0.3)
+        # 每步扫描可见区域勾选
+        items = page.locator(".vue-recycle-scroller__item-view").all()
+        for item in items:
+            try:
+                txt = item.inner_text().strip().split()[0] if item.inner_text().strip() else ""
+            except:
+                continue
+            if txt in sizes:
+                try:
+                    item.locator(".jx-checkbox__inner").first.click(force=True, timeout=500)
+                except:
+                    pass
     
-    # 第二步: 回到顶部，逐个scroll_into_view + fill
+    # 阶段2: 回到顶部
     page.evaluate("""() => {
         const s = document.querySelector('.vue-recycle-scroller');
         if (s) s.scrollTop = 0;
     }""")
     time.sleep(0.5)
-    
+
+    # 阶段3: 逐个scroll_into_view + fill
     checked = []
     for row in data_rows:
         sz = str(row[0])
@@ -123,6 +131,8 @@ def fill_one(page, style_name, cat_path, size_category):
             item = page.locator(f".vue-recycle-scroller__item-view:has-text('{sz}')").first
             item.scroll_into_view_if_needed(timeout=3000)
             time.sleep(0.3)
+            item.locator(".jx-checkbox__inner").first.click(force=True, timeout=1000)
+            time.sleep(0.1)
             inputs = item.locator("input[type=\"text\"]").all()
             cols = row[1:]
             for i in range(len(cols)):
@@ -131,20 +141,9 @@ def fill_one(page, style_name, cat_path, size_category):
             checked.append(sz)
         except:
             pass
-    
+
     s("6_sizes")
     print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({checked})")
-
-    # ── 8. 保存 ──
-    try:
-        page.get_by_role("button", name="保存").click(force=True)
-        time.sleep(3)
-        # 验证保存成功：弹窗关闭且列表中出现模板名
-        body = page.inner_text("body")
-        ok = style_name in body and "创建尺码表模板" in body
-        print(f"  {'[SAVED]' if ok else '[WARN]'} {style_name}")
-    except Exception as e:
-        print(f"  [FAIL] 保存: {e}")
 
     return True
 
