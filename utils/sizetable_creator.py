@@ -34,30 +34,14 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.get_by_role("textbox", name="*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 2. 类目 — 绕过搜索框，逐级展开菜单点路径节点
-    path_parts = [p.strip() for p in cat_path.split("/") if p.strip()]
+    # 2. 类目 — 同step2_fill_only验证过的方式
+    cat_kw = cat_path.split("/")[-1].strip()
     page.get_by_role("textbox", name="*类目").click()
-    time.sleep(0.8)
-    
-    for part in path_parts:
-        clicked = page.evaluate("""(label) => {
-            // 找级联菜单当前可见面板中匹配的节点
-            const menus = document.querySelectorAll('.el-cascader-menu');
-            for (const menu of menus) {
-                const nodes = menu.querySelectorAll('.el-cascader-node');
-                for (const node of nodes) {
-                    const nodeLabel = node.querySelector('.el-cascader-node__label');
-                    if (nodeLabel && (nodeLabel.innerText || '').trim() === label) {
-                        nodeLabel.click();
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }""", part)
-        time.sleep(0.5)
-    
-    time.sleep(1)
+    time.sleep(0.3)
+    page.get_by_role("textbox", name="*类目").fill(cat_kw)
+    time.sleep(2)
+    page.locator(f"li:has-text('{cat_kw}')").first.click(timeout=5000)
+    time.sleep(1.5)
 
     # 3. 参数勾选
     for pl in param_labels:
@@ -75,21 +59,7 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     except:
         pass
 
-    # 5. 先读表头列顺序，构建列名→索引映射
-    col_map = page.evaluate("""(params) => {
-        const result = {};
-        const headers = document.querySelectorAll('.pro-virtual-table__header .pro-virtual-table__header-cell, .el-table__header th');
-        headers.forEach((th, i) => {
-            const txt = (th.innerText || '').trim();
-            for (const p of params) {
-                if (txt.includes(p) || p.includes(txt)) { result[p] = i; break; }
-            }
-        });
-        return result;
-    }""", param_labels)
-    print(f"    列映射: {col_map}")
-
-    # 6. 两阶段填充（按列映射填正确位置）
+    # 5. 两阶段填充（同step2_fill_only验证过的逻辑）
     remaining = set(sizes)
     for i in range(80):
         page.evaluate("(p) => document.querySelector('.vue-recycle-scroller').scrollTop = p", i * 150)
@@ -115,23 +85,18 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
                     const inputs = item.querySelectorAll('input[type="text"]');
                     const cols = args.dataMap[txt];
                     if (cols && inputs.length > 0 && !inputs[0].disabled) {
-                        for (let j = 0; j < cols.length; j++) {
-                            // 按列映射找正确的input索引
-                            const param = args.paramLabels[j];
-                            const targetIdx = args.colMap[param];
-                            if (targetIdx !== undefined && targetIdx < inputs.length) {
-                                const inp = inputs[targetIdx];
-                                inp.focus();
-                                inp.select();
-                                document.execCommand('insertText', false, String(cols[j] || ''));
-                            }
+                        for (let j = 0; j < cols.length && j < inputs.length; j++) {
+                            const inp = inputs[j];
+                            inp.focus();
+                            inp.select();
+                            document.execCommand('insertText', false, String(cols[j] || ''));
                         }
                         filled.push(txt);
                     }
                 }
             }
             return filled;
-        }""", {"remaining": list(remaining), "dataMap": data_map, "colMap": col_map, "paramLabels": param_labels})
+        }""", {"remaining": list(remaining), "dataMap": data_map})
 
         for sz in result:
             remaining.discard(sz)
