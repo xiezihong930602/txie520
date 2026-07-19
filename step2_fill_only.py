@@ -87,68 +87,54 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 分段滚动+填充 ──
-    # 先聚焦
-    try:
-        page.locator(".pro-virtual-table, [class*='virtual-table']").first.click(force=True, timeout=2000)
-        time.sleep(0.2)
-    except:
-        pass
-    
+    # ── 7. 逐行精确定位填充（解决虚拟滚动DOM复用的串行问题）──
+    # 核心策略: 每轮仅处理一行, 用尺码值作为精确定位符
+    # 找到一个目标 → 勾选 → 等input enabled → 填 → 验证 → 下一个
     checked = set()
     data_map = {str(r[0]): r[1:] for r in data_rows}
-    remaining = set(data_map.keys())
+    remaining = list(data_map.keys())  # 有序列表, 保证处理顺序
     
-    # ── 7. 自适应滚动+填充 ──
-    checked = set()
-    data_map = {str(r[0]): r[1:] for r in data_rows}
-    remaining = set(data_map.keys())
-
-    # 动态找滚动容器 + 滚到底检测
     last_scroll = -1
-    for attempt in range(100):  # 最多100轮
+    for attempt in range(120):
         cur = page.evaluate("""() => {
             const s = document.querySelector('.vue-recycle-scroller');
             if (!s) return -1;
-            s.scrollTop += 400;
+            s.scrollTop += 300;
             return s.scrollTop;
         }""")
         time.sleep(0.4)
-
         if cur == last_scroll:
-            break  # 滚到底了
+            break
         last_scroll = cur
-
-        # 扫描可见item
-        items = page.locator(".vue-recycle-scroller__item-view").all()
-        for item in items:
-            try:
-                txt = item.inner_text().strip()
-            except:
-                continue
-            # 通用尺码提取：首个token
-            short = txt.split()[0] if txt.split() else txt
-            if short in remaining:
-                try:
-                    cb = item.locator(".jx-checkbox__inner").first
-                    cb.click(force=True, timeout=1000)
-                    time.sleep(0.1)
-                    inputs = item.locator("input[type=\"text\"]").all()
-                    cols = data_map[short]
-                    filled_count = 0
-                    for i in range(len(cols)):
-                        if i < len(inputs):
-                            inputs[i].fill(str(cols[i] or ""), timeout=2000)
-                            filled_count += 1
-                    remaining.discard(short)
-                    checked.add(short)
-                    print(f"    filled: {short} ({filled_count}/{len(cols)} cols)")
-                except Exception as ex:
-                    print(f"    [ERR] {short}: {str(ex)[:100]}")
-
+        
         if not remaining:
             break
-
+        
+        # 每轮只处理一个目标尺码
+        sz = remaining[0]
+        try:
+            # 精确匹配: 找该尺码所在的整行
+            row_el = page.locator(f".vue-recycle-scroller__item-view").filter(has_text=re.compile(rf"^{sz}\b")).first
+            # 滚到可见
+            row_el.scroll_into_view_if_needed(timeout=5000)
+            time.sleep(0.3)
+            # 勾选
+            cb = row_el.locator(".jx-checkbox__inner").first
+            cb.click(force=True, timeout=2000)
+            time.sleep(0.15)
+            # 填数据
+            inputs = row_el.locator("input[type=\"text\"]").all()
+            cols = data_map[sz]
+            for i in range(len(cols)):
+                if i < len(inputs):
+                    inputs[i].fill(str(cols[i] or ""), timeout=2000)
+            checked.add(sz)
+            remaining.pop(0)
+            print(f"    filled: {sz}")
+        except Exception as ex:
+            # 没找到就继续滚
+            pass
+    
     s("6_sizes")
     print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({sorted(checked)})")
 
