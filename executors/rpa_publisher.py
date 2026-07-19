@@ -30,12 +30,13 @@ class RpaPublisherExecutor(BaseExecutor):
         self.context: BrowserContext = None
         self.page: Page = None
         # 配置
+        config = config or {}
         self.base_url = config.get("base_url", "https://erp.91miaoshou.com")
         self.user_data_dir = config.get("user_data_dir", None)
-        self.profile_directory = config.get("profile_directory", None)  # Chrome Profile子目录名
+        self.profile_directory = config.get("profile_directory", None)
         self.headless = config.get("headless", False)
         self.slow_mo = config.get("slow_mo", 200)
-        self.channel = config.get("channel", None)  # "chrome" 表示用系统安装的Chrome
+        self.channel = config.get("channel", None)
     
     def execute(self, product: Product, auto_close: bool = True, auto_submit: bool = True) -> dict:
         """执行完整上架流程"""
