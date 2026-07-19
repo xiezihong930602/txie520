@@ -87,48 +87,18 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 三段式填充 ──
-    # 阶段1: Python端分段滚到底，每步sleep让浏览器渲染 → 勾选所有目标
-    last_scroll = -1
-    pos = 0
-    while True:
-        cur = page.evaluate("""(p) => {
-            const s = document.querySelector('.vue-recycle-scroller');
-            if (!s) return -1;
-            s.scrollTop = p;
-            return s.scrollTop;
-        }""", pos)
-        if cur == last_scroll and pos > 200:
-            break
-        last_scroll = cur
-        pos += 200
-        time.sleep(0.3)
-        # 每步扫描可见区域勾选
-        items = page.locator(".vue-recycle-scroller__item-view").all()
-        for item in items:
-            try:
-                txt = item.inner_text().strip().split()[0] if item.inner_text().strip() else ""
-            except:
-                continue
-            if txt in sizes:
-                try:
-                    item.locator(".jx-checkbox__inner").first.click(force=True, timeout=500)
-                except:
-                    pass
-    
-    # 阶段2: 回到顶部
+    # ── 7. 单阶段填充：从顶部开始，逐个找、滚到可见、fill ──
     page.evaluate("""() => {
         const s = document.querySelector('.vue-recycle-scroller');
         if (s) s.scrollTop = 0;
     }""")
     time.sleep(0.5)
 
-    # 阶段3: JS查找item中匹配的尺码 → 直接用Python端evaluate获取itemNode → Playwright fill
     checked = []
     for row in data_rows:
         sz = str(row[0])
         try:
-            # 在JS里找到该尺码对应的item节点ID，然后传回Python操作
+            # JS找item索引
             item_idx = page.evaluate("""(target) => {
                 const items = document.querySelectorAll('.vue-recycle-scroller__item-view');
                 for (let i = 0; i < items.length; i++) {
