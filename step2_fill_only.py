@@ -87,44 +87,55 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 单阶段填充：从顶部开始，逐个找、滚到可见、fill ──
-    page.evaluate("""() => {
-        const s = document.querySelector('.vue-recycle-scroller');
-        if (s) s.scrollTop = 0;
-    }""")
-    time.sleep(0.5)
+    # ── 7. 键盘流：ArrowDown逐行扫描，找到就原子填充（JS内勾选+填值，无串行）──
+    checked = set()
+    remaining = set(str(r[0]) for r in data_rows)
+    data_map = {str(r[0]): r[1:] for r in data_rows}
 
-    checked = []
-    for row in data_rows:
-        sz = str(row[0])
-        try:
-            # JS找item索引
-            item_idx = page.evaluate("""(target) => {
+    # 先聚焦表格区域
+    try:
+        page.locator(".pro-virtual-table, [class*='virtual-table']").first.click(force=True, timeout=2000)
+        time.sleep(0.2)
+    except:
+        pass
+
+    for step in range(200):  # 最多200次按键
+        page.keyboard.press("ArrowDown")
+        time.sleep(0.08)
+        if step % 3 == 0:  # 每3次ArrowDown用PageDown加速
+            page.keyboard.press("PageDown")
+        time.sleep(0.3)
+
+        # JS原子操作：找可见区域中匹配的尺码 → 勾选 + fill
+        for sz in list(remaining):
+            done = page.evaluate("""(args) => {
+                const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
                 const items = document.querySelectorAll('.vue-recycle-scroller__item-view');
-                for (let i = 0; i < items.length; i++) {
-                    const txt = items[i].innerText.trim().split(/[\\s\\n]+/)[0];
-                    if (txt === target) return i;
+                for (const item of items) {
+                    const txt = item.innerText.trim().split(/[\\s\\n]+/)[0];
+                    if (txt === args.sz) {
+                        const cb = item.querySelector('.jx-checkbox__inner');
+                        if (cb) cb.click();
+                        const inputs = item.querySelectorAll('input[type="text"]');
+                        const cols = args.cols;
+                        for (let j = 0; j < cols.length && j < inputs.length; j++) {
+                            ns.call(inputs[j], String(cols[j] || ''));
+                        }
+                        return true;
+                    }
                 }
-                return -1;
-            }""", sz)
-            if item_idx < 0:
-                continue
-            item = page.locator(".vue-recycle-scroller__item-view").nth(item_idx)
-            item.scroll_into_view_if_needed(timeout=3000)
-            time.sleep(0.3)
-            item.locator(".jx-checkbox__inner").first.click(force=True, timeout=1000)
-            time.sleep(0.1)
-            inputs = item.locator("input[type=\"text\"]").all()
-            cols = row[1:]
-            for i in range(len(cols)):
-                if i < len(inputs):
-                    inputs[i].fill(str(cols[i] or ""), timeout=2000)
-            checked.append(sz)
-        except:
-            pass
+                return false;
+            }""", {"sz": sz, "cols": data_map[sz]})
+            if done:
+                remaining.discard(sz)
+                checked.add(sz)
+                print(f"    filled: {sz}")
+
+        if not remaining:
+            break
 
     s("6_sizes")
-    print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({checked})")
+    print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({sorted(checked)})")
 
     return True
 
