@@ -34,13 +34,13 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.get_by_role("textbox", name="*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 2. 类目 — 同step2_fill_only验证过的方式
+    # 2. 类目 — codegen验证过的menuitem选择器
     cat_kw = cat_path.split("/")[-1].strip()
     page.get_by_role("textbox", name="*类目").click()
     time.sleep(0.3)
     page.get_by_role("textbox", name="*类目").fill(cat_kw)
     time.sleep(2)
-    page.locator(f"li:has-text('{cat_kw}')").first.click(timeout=5000)
+    page.get_by_role("menuitem", name=cat_kw).click(timeout=5000)
     time.sleep(1.5)
 
     # 3. 参数勾选
