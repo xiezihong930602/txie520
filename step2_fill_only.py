@@ -99,16 +99,22 @@ def fill_one(page, style_name, cat_path, size_category):
     data_map = {str(r[0]): r[1:] for r in data_rows}
     remaining = set(data_map.keys())
     
-    # 分段滚，每200px扫一次
-    for step in range(50):  # 最多50次=10k px
-        # 滚
-        page.mouse.wheel(0, 200)
+    # 分段滚，每个PageDown扫一次
+    for step in range(50):
+        page.keyboard.press("ArrowDown")
+        time.sleep(0.05)
+        # 每5次ArrowDown用一次PageDown加速
+        if step % 5 == 0:
+            page.keyboard.press("PageDown")
         time.sleep(0.3)
         
-        # 扫描当前可见item
+        # 扫描
         items = page.locator(".vue-recycle-scroller__item-view").all()
         for item in items:
-            txt = item.inner_text().strip()
+            try:
+                txt = item.inner_text().strip()
+            except:
+                continue
             short = txt.split()[0] if txt.split() else txt
             if short in remaining:
                 inputs = item.locator("input[type=\"text\"]").all()
