@@ -76,32 +76,43 @@ def fill_one(page, style_name, cat_path, size_category):
     s("4_params")
     print(f"  [OK] 参数: {len(param_labels)}")
 
-    # ── 5. 取消全选 + 勾尺码 ──
-    # 尺码表是虚拟滚动; 先取消全选(点表头checkbox两次)
-    try:
-        page.locator("th .jx-checkbox__inner").first.click(timeout=2000)
-        time.sleep(0.2)
-        page.locator("th .jx-checkbox__inner").first.click(timeout=2000)
-        time.sleep(0.3)
-    except: pass
-
-    # 用evaluate遍历每行的文本, 匹配后点击checkbox
-    checked = page.evaluate("""(targets) => {
-        const rows = document.querySelectorAll('.el-dialog__wrapper tbody tr, .jx-dialog__wrapper tbody tr');
-        let n = 0;
-        for (const row of rows) {
-            // 取第一列的文本内容（尺码值）
-            const firstCell = row.querySelector('td.is-fixed-left, td:first-child, .pro-virtual-table__cell:first-child');
-            const txt = (firstCell ? firstCell.innerText : '').trim();
-            if (targets.includes(txt)) {
-                const cb = row.querySelector('.jx-checkbox__inner, .el-checkbox__inner');
-                if (cb) { cb.click(); n++; }
-            }
+    # ── 5. 取消全选 → 先通过JS清空已勾选，再勾目标尺码 ──
+    # 取消全选：直接改Vue内部checked状态清空选中的行
+    page.evaluate("""() => {
+        // 找到虚拟表格的Vue实例，清空selection
+        const vt = document.querySelector('.pro-virtual-table, [class*="virtual-table"]');
+        if (vt && vt.__vue__) {
+            const vue = vt.__vue__;
+            // 清空选中行
+            if (vue.selection && Array.isArray(vue.selection)) vue.selection = [];
+            if (vue.selectedRows && Array.isArray(vue.selectedRows)) vue.selectedRows = [];
         }
+    }""")
+    time.sleep(0.3)
+
+    # 尺码列表很长，需要虚拟滚动到目标区域。用JS直接在虚拟表格数据层取勾选
+    checked = page.evaluate("""(targets) => {
+        // 虚拟表格的数据通常挂在 Vue 实例的 data 或 tableData 上
+        const vt = document.querySelector('.pro-virtual-table, [class*="virtual-table"]');
+        if (!vt || !vt.__vue__) return 0;
+        const vue = vt.__vue__;
+        const tableData = vue.tableData || vue.data || vue.list || [];
+        let n = 0;
+        // 直接在数据层匹配
+        tableData.forEach(row => {
+            const sizeText = String(row.size || row[Object.keys(row)[0]] || '').trim();
+            if (targets.includes(sizeText)) {
+                // 切换到选中状态
+                if (!vue.selection) vue.selection = [];
+                vue.selection.push(row);
+                n++;
+            }
+        });
+        // 强制更新视图
+        if (vue.$forceUpdate) vue.$forceUpdate();
         return n;
     }""", sizes)
-    s("6_sizes")
-    print(f"  [OK] 尺码勾选: {checked}/{len(sizes)}")
+    print(f"  [OK] 尺码勾选(Vue层): {checked}/{len(sizes)}")
 
     # ── 7. 粘贴导入 ──
     try:
