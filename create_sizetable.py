@@ -1,4 +1,6 @@
-﻿"""尺码表模板自动创建 RPA - Codegen版本"""
+﻿"""尺码表模板自动创建 RPA - 最终版
+流程：导航 → 创建 → 填名称 → 选类目 → 选分类 → 勾参数 → 取消全选 → 勾尺码 → 粘贴导入 → 保存
+"""
 import os, sys, time
 from pathlib import Path
 
@@ -37,7 +39,6 @@ def load_size_data(excel_path, style_name):
     return headers, data_rows, is_top
 
 def get_param_labels(headers):
-    """从表头映射到页面显示的参数label"""
     return [p for h in headers if h != u"\u5c3a\u7801" for p in ALL_PARAMS if h in p or p in h]
 
 def get_size_values(data_rows):
@@ -54,14 +55,11 @@ def generate_paste_text(headers, data_rows):
 
 def get_cat_keyword(cat_path):
     """从类目路径提取搜索关键词"""
-    # 取最末端的类目作为关键词
     last = cat_path.split("/")[-1].strip()
-    # 去掉前缀如"男童时尚"→"帽衫"
-    words = [u"帽衫", u"卫衣", u"长裤", u"短裤", u"背心", u"夹克", u"套装", u"polo", u"T恤", u"马甲"]
-    for w in words:
-        if w in last:
-            return w
-    # fallback: 取最后一个空格后的词
+    keywords = [u"帽衫", u"卫衣", u"长裤", u"短裤", u"背心", u"夹克", u"套装", u"polo", u"T恤", u"马甲", u"马甲"]
+    for kw in keywords:
+        if kw in last or kw.lower() in last.lower():
+            return kw
     parts = last.split()
     return parts[-1] if parts else last
 
@@ -69,95 +67,118 @@ def create_one(page, style_name, cat_path, size_category):
     print(f"\n===== {style_name} =====")
     headers, data_rows, is_top = load_size_data(EXCEL_PATH, style_name)
     if not data_rows: print(f"  [SKIP] 未找到数据"); return False
-    params = get_param_labels(headers)
+    param_labels = get_param_labels(headers)
     sizes = get_size_values(data_rows)
     paste_text = generate_paste_text(headers, data_rows)
     cat_kw = get_cat_keyword(cat_path)
-    print(f"  类型: {'上衣' if is_top else '裤子'}, 参数: {params}, 尺码: {len(sizes)}, 类目关键词: {cat_kw}")
+    print(f"  类型: {'上衣' if is_top else '裤子'}")
+    print(f"  参数: {param_labels}")
+    print(f"  尺码({len(sizes)}): {sizes[:5]}...")
+    print(f"  类目关键词: {cat_kw}")
 
-    # 1. 创建
+    # === 步骤1: 点击创建按钮 ===
     page.get_by_role("button", name=u"创建尺码表模板").click()
     time.sleep(2)
 
-    # 2. 模板名称
+    # === 步骤2: 填写模板名称 ===
     page.get_by_role("textbox", name=u"*模板名称").click()
     page.get_by_role("textbox", name=u"*模板名称").fill(style_name)
     time.sleep(0.3)
-    print("  [OK] 名称")
+    print("  [OK] 模板名称")
 
-    # 3. 类目 - 搜索关键词 → 点击匹配项
+    # === 步骤3: 选择类目 ===
     page.get_by_role("textbox", name=u"*类目").click()
     time.sleep(0.3)
+    # 搜索类目关键词
     page.get_by_role("textbox", name=u"*类目").fill(cat_kw)
     time.sleep(2)
-    # 找匹配的级联选项
+    # 从级联浮层中点击匹配项
     try:
         page.get_by_role("listitem").filter(has_text=cat_path).first.click(timeout=5000)
-        print("  [OK] 类目")
     except:
-        # fallback: 用关键词模糊匹配
         page.get_by_role("listitem").filter(has_text=cat_kw).first.click(timeout=5000)
-        print(f"  [OK] 类目(fallback: {cat_kw})")
     time.sleep(0.5)
+    print(f"  [OK] 类目: {cat_kw}")
 
-    # 4. 勾选尺码参数 - 用label的checkbox点内圈
-    for param in params:
-        try:
-            page.locator(f"label:has-text('{param}') .jx-checkbox__inner").click(timeout=2000)
-            time.sleep(0.1)
-        except: pass
-    print(f"  [OK] 参数勾选")
-
-    # 5. 尺码全选→取消
+    # === 步骤4: 选择尺码表分类 ===
     try:
-        # 点击表头checkbox
+        # 分类下拉框在弹窗里，查找含有分类文字的el-select
+        page.locator(".el-dialog__wrapper .el-select", has_text=u"分类").first.click(timeout=3000)
+        time.sleep(0.5)
+        page.get_by_role("listitem").filter(has_text=size_category).first.click(timeout=3000)
+        time.sleep(0.3)
+        print(f"  [OK] 分类: {size_category}")
+    except:
+        print(f"  [WARN] 分类选择跳过")
+
+    # === 步骤5: 勾选尺码参数 ===
+    # 参数复选框是 label 包裹的 .jx-checkbox__inner
+    for pl in param_labels:
+        try:
+            page.locator(f"label:has-text('{pl}') .jx-checkbox__inner").click(timeout=2000)
+            time.sleep(0.15)
+        except:
+            pass
+    print(f"  [OK] 参数勾选: {len(param_labels)}个")
+
+    # === 步骤6: 取消全选 ===
+    try:
         page.locator("th .jx-checkbox__inner").first.click(timeout=2000)
         time.sleep(0.2)
+        # 如果第一次点击是勾选（表头默认未勾），再点一次取消
         page.locator("th .jx-checkbox__inner").first.click(timeout=2000)
         time.sleep(0.3)
-    except: pass
+    except:
+        pass
 
-    # 6. 逐个勾选尺码 - 虚拟滚动，需要点击可见的checkbox
+    # === 步骤7: 勾选对应尺码 ===
+    checked = 0
     for size in sizes:
         try:
-            # 找包含该尺码的行
-            row = page.locator(f"td:has-text('{size}')").first
-            if row.is_visible():
-                # 滚动到可见
-                row.scroll_into_view_if_needed()
+            # 虚拟滚动：需要先让目标行出现在视口
+            row_sel = f"tr:has(td:text-is('{size}')) .jx-checkbox__inner"
+            cb = page.locator(row_sel).first
+            if cb.is_visible():
+                cb.click(timeout=2000)
+                checked += 1
                 time.sleep(0.1)
-            # 点该行的checkbox
-            page.locator(f"tr:has(td:text-is('{size}')) .jx-checkbox__inner").first.click(timeout=2000)
-            time.sleep(0.1)
+            else:
+                # 不可见时跳过（尺码不在当前页的虚拟滚动范围内）
+                pass
         except:
-            continue
-    print(f"  [OK] 尺码勾选: {len(sizes)}")
+            pass
+    print(f"  [OK] 尺码勾选: {checked}/{len(sizes)}")
 
-    # 7. 粘贴导入
+    # === 步骤8: 粘贴导入 ===
     try:
         page.get_by_role("button", name=u"Excel快速编辑").click()
         time.sleep(0.5)
         page.get_by_role("menuitem", name=u"第二步：粘贴导入").click()
         time.sleep(1)
-        # 粘贴到textarea
         page.locator("textarea").first.click()
         page.locator("textarea").first.fill(paste_text)
         time.sleep(0.5)
         page.get_by_role("button", name=u"导入").click()
         time.sleep(2)
-        print("  [OK] 粘贴导入")
+        print(f"  [OK] 粘贴导入")
     except Exception as e:
-        print(f"  粘贴导入失败: {e}")
+        print(f"  [FAIL] 粘贴导入: {e}")
+        return False
 
-    # 8. 保存
+    # === 步骤9: 保存 ===
     try:
         page.get_by_role("button", name=u"保存").click()
         time.sleep(3)
-        ok = style_name in page.inner_text("body")
-        print(f"  [{'SAVED' if ok else 'WARN'}] {style_name}")
-        return True
-    except:
-        print(f"  [FAIL] 保存")
+        # 验证是否出现在列表里
+        page_text = page.inner_text("body")
+        if style_name in page_text:
+            print(f"  [SAVED] {style_name}")
+            return True
+        else:
+            print(f"  [WARN] 可能未保存成功，模板列表中未找到")
+            return False
+    except Exception as e:
+        print(f"  [FAIL] 保存: {e}")
         return False
 
 def main():
@@ -169,11 +190,20 @@ def main():
     b = p.chromium.launch(headless=RPA_HEADLESS, slow_mo=200)
     ctx = b.new_context(storage_state=str(STATE_FILE), viewport={"width": 1920, "height": 1080})
     page = ctx.new_page()
-    page.goto(SIZE_CHART_URL, wait_until="domcontentloaded"); time.sleep(4)
+    page.goto(SIZE_CHART_URL, wait_until="domcontentloaded")
+    time.sleep(4)
+
+    ok = fail = 0
     for s in styles:
-        if not create_one(page, s["name"], s["cat"], s["sc"]): break
-    print("\n=== DONE ===")
-    b.close(); p.stop()
+        if create_one(page, s["name"], s["cat"], s["sc"]):
+            ok += 1
+        else:
+            fail += 1
+            break
+
+    print(f"\n=== 完成: 成功{ok}, 失败{fail} ===")
+    b.close()
+    p.stop()
 
 if __name__ == "__main__":
     main()
