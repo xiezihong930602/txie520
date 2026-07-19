@@ -34,12 +34,14 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.get_by_role("textbox", name="*模板名称").fill(style_name)
     time.sleep(0.3)
 
-    # 2. 类目 — 完整路径fill + 回车选择唯一结果
+    # 2. 类目 — 完整路径fill + Playwright点击弹出的唯一结果
     page.get_by_role("textbox", name="*类目").click()
     time.sleep(0.3)
     page.get_by_role("textbox", name="*类目").fill(cat_path)
     time.sleep(2)
-    page.keyboard.press("Enter")
+    # 点击弹出的级联节点（过滤包含末级关键词的结果）
+    cat_kw = cat_path.split("/")[-1].strip()
+    page.locator('.el-cascader-node__label').filter(has_text=cat_kw).first.click(timeout=5000)
     time.sleep(1.5)
 
     # 3. 参数勾选
