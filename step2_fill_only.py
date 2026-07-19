@@ -138,14 +138,23 @@ def fill_one(page, style_name, cat_path, size_category):
 
     # ── 8. 粘贴导入 ──
     try:
+        # 先写数据到 Windows 剪贴板
+        import subprocess, io
+        proc = subprocess.Popen(
+            ['clip'], stdin=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            shell=True
+        )
+        proc.communicate(input=paste_text.encode('utf-16-le'))
+        proc.wait()
+        
         page.get_by_role("button", name="Excel快速编辑").click()
         time.sleep(0.5)
         page.get_by_role("menuitem", name="第二步：粘贴导入").click()
         time.sleep(1)
-        # 找导入弹窗里的 textarea，用 Ctrl+V 粘贴
+        # 点 textarea 后 Ctrl+V
         page.locator("[role=\"dialog\"] textarea, textarea").first.click()
         time.sleep(0.3)
-        page.keyboard.press("Control+a")
         page.keyboard.press("Control+v")
         time.sleep(0.5)
         s("7_pasted")
