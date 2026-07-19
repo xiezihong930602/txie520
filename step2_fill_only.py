@@ -87,41 +87,43 @@ def fill_one(page, style_name, cat_path, size_category):
     except Exception as e:
         print(f"  取消全选失败: {e}")
 
-    # ── 7. 滚到底边扫描边勾选 ──
-    # 先聚焦尺码表区域
+    # ── 7. 分段滚动+填充 ──
+    # 先聚焦
     try:
         page.locator(".pro-virtual-table, [class*='virtual-table']").first.click(force=True, timeout=2000)
         time.sleep(0.2)
     except:
         pass
-
-    # ── 7. Python端滚动+填充（彻底放弃JS all-in-one）──
-    checked = []
-    vt = page.locator(".vue-recycle-scroller").first
     
-    # 步骤A: 滚到底一次，让虚拟表格加载完整数据
-    vt.evaluate("el => el.scrollTop = 99999")
-    time.sleep(2)
+    checked = set()
+    data_map = {str(r[0]): r[1:] for r in data_rows}
+    remaining = set(data_map.keys())
     
-    # 步骤B: 逐行用 Playwright fill
-    for row in data_rows:
-        sz = str(row[0])
-        try:
-            # 找到该尺码的 input 单元格。row结构: tr内多个input[type="text"]
-            # 用尺码文本定位该行
-            row_el = page.locator(f"tr:has-text('{sz}'), .vue-recycle-scroller__item-view:has-text('{sz}')").first
-            # 确保可见
-            row_el.scroll_into_view_if_needed(timeout=5000)
-            time.sleep(0.3)
-            inputs = row_el.locator("input[type=\"text\"]").all()
-            for i in range(1, len(row)):
-                if i - 1 < len(inputs):
-                    inputs[i - 1].fill(str(row[i] or ""), timeout=2000)
-            checked.append(sz)
-        except Exception as e:
-            pass
+    # 分段滚，每200px扫一次
+    for step in range(50):  # 最多50次=10k px
+        # 滚
+        page.mouse.wheel(0, 200)
+        time.sleep(0.3)
+        
+        # 扫描当前可见item
+        items = page.locator(".vue-recycle-scroller__item-view").all()
+        for item in items:
+            txt = item.inner_text().strip()
+            short = txt.split()[0] if txt.split() else txt
+            if short in remaining:
+                inputs = item.locator("input[type=\"text\"]").all()
+                cols = data_map[short]
+                for i in range(len(cols)):
+                    if i < len(inputs):
+                        inputs[i].fill(str(cols[i] or ""), timeout=2000)
+                remaining.discard(short)
+                checked.add(short)
+        
+        if not remaining:
+            break
+    
     s("6_sizes")
-    print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({checked})")
+    print(f"  [OK] 尺码填充: {len(checked)}/{len(data_rows)} 行 ({sorted(checked)})")
 
     return True
 
