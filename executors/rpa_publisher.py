@@ -315,7 +315,7 @@ class RpaPublisherExecutor(BaseExecutor):
         # 2. 输入搜索（codegen方式：fill）
         print(f"  [2/4] 输入「{shop_name}」...")
         shop_input = self.page.locator(".jx-form-item").filter(has_text="店铺").get_by_role("textbox", name="请选择或输入搜索").first
-        shop_input.click()
+        shop_input.click(force=True)
         time.sleep(0.3)
         shop_input.fill(shop_name)
         time.sleep(1.5)
