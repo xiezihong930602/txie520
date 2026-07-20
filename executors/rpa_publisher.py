@@ -312,21 +312,17 @@ class RpaPublisherExecutor(BaseExecutor):
             pass
         time.sleep(0.5)
 
-        # 2. 点搜索框 + 键盘输入（codegen+验证的组合）
+        # 2. 点搜索框 + fill输入（codegen方案）
         print(f"  [2/4] 输入「{shop_name}」...")
         shop_input = self.page.locator(".jx-form-item").filter(has_text="店铺").get_by_role("textbox", name="请选择或输入搜索").first
         shop_input.click(force=True)
         time.sleep(0.3)
-        self.page.keyboard.type(shop_name, delay=100)
+        shop_input.fill(shop_name)
         time.sleep(1.5)
 
-        # 3. 点搜索结果（匹配Noble关键词，兼容有无空格）
+        # 3. 点搜索结果（codegen方式：listitem.filter）
         print(f"  [3/4] 选中搜索结果...")
-        # 优先精确匹配，超时则模糊匹配
-        try:
-            self.page.locator("li.el-select-dropdown__item").filter(has_text=shop_name).first.click(timeout=2000)
-        except:
-            self.page.locator("li.el-select-dropdown__item").filter(has_text="Noble").first.click(timeout=5000)
+        self.page.get_by_role("listitem").filter(has_text=shop_name).first.click(timeout=5000)
         time.sleep(0.5)
 
         # 4. 点击空白关闭浮层
