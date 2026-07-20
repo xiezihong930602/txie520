@@ -335,14 +335,47 @@ class RpaPublisherExecutor(BaseExecutor):
         time.sleep(2)  # 等搜索结果加载
 
         print(f"[3/3] 按回车选中第一个搜索结果...")
-        # 按↓箭头选中第一个结果，再回车确认
         self.page.keyboard.press("ArrowDown")
         time.sleep(0.3)
         self.page.keyboard.press("Enter")
         time.sleep(0.5)
-        # 点击空白区域确认选择，关闭浮层
         self.page.mouse.click(10, 10)
         time.sleep(0.8)
+
+        # 验证
+        final_text = self.page.evaluate("""() => {
+            const cascader = document.querySelector('.jx-pro-cascader, .el-cascader, [class*="cascader"]');
+            return cascader?.querySelector('input')?.value || '';
+        }""")
+        if not final_text or 'Noble' not in final_text:
+            # Fallback: JS直接搜并点第一个结果
+            print(f"  [回退] 键盘未生效，改用JS搜索...")
+            self.page.evaluate("""(name) => {
+                // 找级联输入框填入店铺名触发搜索
+                const inp = document.querySelector('.jx-dialog input[placeholder*="搜索"]')
+                    || document.querySelector('[role="dialog"] input[placeholder*="搜索"]')
+                    || document.querySelector('.jx-dialog input');
+                if (inp) {
+                    const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                    ns.call(inp, name);
+                    inp.dispatchEvent(new Event('input', {bubbles: true}));
+                    inp.dispatchEvent(new Event('change', {bubbles: true}));
+                }
+            }""", shop_name)
+            time.sleep(2)
+            # 点第一个结果
+            self.page.evaluate("""() => {
+                const items = document.querySelectorAll('li, [class*="option"], [class*="item"]');
+                for (const item of items) {
+                    if (item.getBoundingClientRect().height > 10) {
+                        item.click(); return true;
+                    }
+                }
+                return false;
+            }""")
+            time.sleep(0.5)
+            self.page.mouse.click(10, 10)
+            time.sleep(0.5)
 
         # 验证最终结果
         final_text = self.page.evaluate("""() => {
