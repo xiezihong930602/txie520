@@ -215,20 +215,3 @@ class FeishuDataSource:
             return True
         except Exception:
             return False
-
-    def batch_get_tmp_download_url(self, file_tokens: List[str]) -> Dict[str, str]:
-        """批量获取附件临时公网下载链接（有效期1小时，公网可直接访问，无需鉴权）"""
-        if not file_tokens:
-            return {}
-        path = "/drive/v1/medias/batch_get_tmp_download_url"
-        try:
-            # 接口是GET请求，file_tokens作为query参数，多个用逗号分隔
-            params = {"file_tokens": ",".join(file_tokens)}
-            data = self._request("GET", path, params=params)
-            result = {}
-            for item in data.get("tmp_download_urls", []):
-                result[item["file_token"]] = item["tmp_download_url"]
-            return result
-        except Exception as e:
-            print(f"获取临时下载链接失败: {e}")
-            return {}

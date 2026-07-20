@@ -11,6 +11,7 @@ class Product:
     main_style: Style                # 主款式
     combo_type: str                  # 组合类型：single/2pack/suit/3pack
     title: str                       # 商品标题(英文)
+    shop_name: str = "Noble Boys"    # 店铺名称
     image_urls: List[str] = field(default_factory=list)  # 主图URL
     colors: List[str] = field(default_factory=list)      # 颜色列表
     sizes: Optional[List[str]] = None  # 尺码（为空则用款式默认）

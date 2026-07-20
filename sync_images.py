@@ -107,9 +107,13 @@ def main():
 
             print(f"  上传图床...")
             try:
-                url = uploader.upload(local_path, filename=f"temu/{color_name}_{int(time.time())}_{i}.jpg")
+                # 用纯英文数字文件名，避免中文URL编码问题
+                import random
+                random_str = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
+                safe_filename = f"temu/{int(time.time())}_{random_str}_{i}.jpg"
+                url = uploader.upload(local_path, filename=safe_filename)
                 public_urls.append(url)
-                print(f"    [OK] {url[:60]}...")
+                print(f"    [OK] {url}")
             except Exception as e:
                 print(f"    [FAIL] 上传失败: {e}")
                 all_ok = False

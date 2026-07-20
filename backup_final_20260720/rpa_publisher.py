@@ -1298,8 +1298,8 @@ class RpaPublisherExecutor(BaseExecutor):
             try:
                 sz_page = self.context.new_page()
                 sz_page.goto("https://erp.91miaoshou.com/pddkj/move_collect/template_management/sizeChart",
-                             wait_until="load")
-                time.sleep(8)
+                             wait_until="domcontentloaded")
+                time.sleep(4)
                 from utils.sizetable_creator import create_sizetable_for_style
                 sz_ok = create_sizetable_for_style(sz_page, style_name, cat_path)
                 sz_page.close()
@@ -1444,8 +1444,8 @@ class RpaPublisherExecutor(BaseExecutor):
             try:
                 sz_page = self.context.new_page()
                 sz_page.goto("https://erp.91miaoshou.com/pddkj/move_collect/template_management/sizeChart",
-                             wait_until="load")
-                time.sleep(8)
+                             wait_until="domcontentloaded")
+                time.sleep(4)
                 from utils.sizetable_creator import create_sizetable_for_style
                 sz_ok = create_sizetable_for_style(sz_page, style_name, cat_path)
                 sz_page.close()
