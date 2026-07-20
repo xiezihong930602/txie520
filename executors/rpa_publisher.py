@@ -312,11 +312,14 @@ class RpaPublisherExecutor(BaseExecutor):
             pass
         time.sleep(0.5)
 
-        # 2. 点输入框并输入搜索
+        # 2. 点店铺级联框搜索 → Ctrl+A清空 → 键盘输入
         print(f"  [2/4] 输入「{shop_name}」...")
-        self.page.get_by_role("textbox", name="请选择或输入搜索").click()
+        shop_input = self.page.locator(".jx-form-item").filter(has_text="店铺").locator(".jx-cascader__search-input").first
+        shop_input.click()
         time.sleep(0.3)
-        self.page.get_by_role("textbox", name="请选择或输入搜索").fill(shop_name)
+        self.page.keyboard.press("Control+A")
+        time.sleep(0.1)
+        self.page.keyboard.type(shop_name, delay=100)
         time.sleep(1.5)
 
         # 3. 选结果
