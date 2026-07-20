@@ -320,12 +320,13 @@ class RpaPublisherExecutor(BaseExecutor):
         self.page.keyboard.type(shop_name, delay=100)
         time.sleep(1.5)
 
-        # 3. 点搜索结果（listitem优先，超时按Enter）
+        # 3. 点搜索结果（匹配Noble关键词，兼容有无空格）
         print(f"  [3/4] 选中搜索结果...")
+        # 优先精确匹配，超时则模糊匹配
         try:
-            self.page.get_by_role("listitem").filter(has_text=shop_name).first.click(timeout=3000)
+            self.page.locator("li.el-select-dropdown__item").filter(has_text=shop_name).first.click(timeout=2000)
         except:
-            self.page.keyboard.press("Enter")
+            self.page.locator("li.el-select-dropdown__item").filter(has_text="Noble").first.click(timeout=5000)
         time.sleep(0.5)
 
         # 4. 点击空白关闭浮层
