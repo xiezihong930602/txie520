@@ -43,13 +43,20 @@ def create_sizetable_for_style(page, style_name: str, cat_path: str = "") -> boo
     page.locator(f"li:has-text('{cat_kw}')").first.click(timeout=5000)
     time.sleep(1.5)
 
-    # 3. 参数勾选
-    for pl in param_labels:
-        try:
-            page.locator(f"label:has-text('{pl}') .jx-checkbox__inner").click(timeout=2000)
-            time.sleep(0.15)
-        except:
-            pass
+    # 3. 参数勾选（只勾有数据的列）
+    active_params = []
+    for j, pl in enumerate(param_labels):
+        has_data = any(r[j+1] for r in data_rows if r[j+1])
+        if has_data:
+            try:
+                page.locator(f"label:has-text('{pl}') .jx-checkbox__inner").click(timeout=2000)
+                time.sleep(0.15)
+                active_params.append(pl)
+            except:
+                pass
+        else:
+            print(f"    跳过空列: {pl}")
+    param_labels = active_params  # 后续填充只用有数据的列
     time.sleep(1)
 
     # 4. 取消全选
