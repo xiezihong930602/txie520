@@ -304,25 +304,23 @@ class RpaPublisherExecutor(BaseExecutor):
         """选择店铺：codegen验证的jx-选择器"""
         print(f"\n=== 店铺选择 ===")
 
-        # 1. 删除已有tag
+        # 1. 删除已有tag（codegen路径）
         print(f"  [1/4] 删除已有店铺...")
         try:
-            self.page.locator(".jx-tag .jx-icon, .jx-tag__close").first.click(timeout=3000)
+            self.page.locator(".jx-cascader__tags .jx-tag .jx-icon").first.click(timeout=3000)
         except:
             pass
         time.sleep(0.5)
 
-        # 2. 点店铺级联框搜索 → Ctrl+A清空 → 键盘输入
+        # 2. 输入搜索（codegen方式：fill）
         print(f"  [2/4] 输入「{shop_name}」...")
-        shop_input = self.page.locator(".jx-form-item").filter(has_text="店铺").locator(".jx-cascader__search-input").first
+        shop_input = self.page.locator(".jx-form-item").filter(has_text="店铺").get_by_role("textbox", name="请选择或输入搜索").first
         shop_input.click()
         time.sleep(0.3)
-        self.page.keyboard.press("Control+A")
-        time.sleep(0.1)
-        self.page.keyboard.type(shop_name, delay=100)
+        shop_input.fill(shop_name)
         time.sleep(1.5)
 
-        # 3. 选结果
+        # 3. 选结果（codegen方式：listitem.filter）
         print(f"  [3/4] 选中搜索结果...")
         self.page.get_by_role("listitem").filter(has_text=shop_name).first.click(timeout=5000)
         time.sleep(0.5)
