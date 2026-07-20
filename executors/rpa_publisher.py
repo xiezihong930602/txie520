@@ -317,9 +317,9 @@ class RpaPublisherExecutor(BaseExecutor):
         self.page.keyboard.type(shop_name, delay=100)
         time.sleep(1.5)
 
-        # 3. 选结果（codegen方式：listitem.filter）
+        # 3. 回车选中搜索结果
         print(f"  [3/4] 选中搜索结果...")
-        self.page.get_by_role("listitem").filter(has_text=shop_name).first.click(timeout=5000)
+        self.page.keyboard.press("Enter")
         time.sleep(0.5)
 
         # 4. 点击空白关闭浮层
