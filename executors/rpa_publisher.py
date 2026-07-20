@@ -307,7 +307,7 @@ class RpaPublisherExecutor(BaseExecutor):
         # 1. 删除已有tag（codegen路径）
         print(f"  [1/4] 删除已有店铺...")
         try:
-            self.page.locator(".jx-cascader__tags .jx-tag .jx-icon").first.click(timeout=3000)
+            self.page.locator(".jx-cascader__tags .el-icon--close, .jx-cascader__tags [class*='close']").first.click(timeout=3000)
         except:
             pass
         time.sleep(0.5)
