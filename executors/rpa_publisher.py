@@ -301,88 +301,33 @@ class RpaPublisherExecutor(BaseExecutor):
             print(f"  [诊断异常]: {e}")
     
     def _select_shop(self, shop_name: str):
-        """选择店铺：直接在级联输入框输入店铺名搜索回车选中，和手动输入搜索完全一致，无需定位浮层"""
-        print(f"\n=== 店铺选择调试开始（输入搜索方案） ===")
-        print(f"[1/3] 删除默认tag...")
-        self.page.evaluate("""() => {
-            const btns = document.querySelectorAll('.el-tag__close, [class*="tag"] [class*="close"]');
-            for (const btn of btns) {
-                const r = btn.getBoundingClientRect();
-                if (r.width > 5 && r.height > 5 && r.width < 30 && r.top < 200) {
-                    btn.click(); return;
-                }
-            }
-        }""")
-        time.sleep(0.3)
+        """选择店铺：codegen验证的jx-选择器"""
+        print(f"\n=== 店铺选择 ===")
 
-        print(f"[2/3] 点击输入框并输入「{shop_name}」搜索...")
+        # 1. 删除已有tag
+        print(f"  [1/4] 删除已有店铺...")
         try:
-            inp = self.page.locator('.jx-dialog input[placeholder*="请选择或输入搜索"]').first
-            if inp.count() == 0:
-                inp = self.page.locator('[role="dialog"] input[placeholder*="请选择或输入搜索"]').first
-            # 点击输入框聚焦
-            box = inp.bounding_box()
-            if box:
-                self.page.mouse.click(box['x']+box['width']/2, box['y']+box['height']/2)
-                time.sleep(0.5)
-                # 全选已有内容（不用fill，因为input是readonly，直接键盘操作）
-                self.page.keyboard.press("Control+A")
-                time.sleep(0.1)
-                # 输入店铺名
-                self.page.keyboard.type(shop_name, delay=100)
-        except Exception as e:
-            print(f"  ❌ 输入失败: {e}"); return
-        time.sleep(2)  # 等搜索结果加载
-
-        print(f"[3/3] 按回车选中第一个搜索结果...")
-        self.page.keyboard.press("ArrowDown")
-        time.sleep(0.3)
-        self.page.keyboard.press("Enter")
+            self.page.locator(".jx-tag .jx-icon, .jx-tag__close").first.click(timeout=3000)
+        except:
+            pass
         time.sleep(0.5)
+
+        # 2. 点输入框并输入搜索
+        print(f"  [2/4] 输入「{shop_name}」...")
+        self.page.get_by_role("textbox", name="请选择或输入搜索").click()
+        time.sleep(0.3)
+        self.page.get_by_role("textbox", name="请选择或输入搜索").fill(shop_name)
+        time.sleep(1.5)
+
+        # 3. 选结果
+        print(f"  [3/4] 选中搜索结果...")
+        self.page.get_by_role("listitem").filter(has_text=shop_name).first.click(timeout=5000)
+        time.sleep(0.5)
+
+        # 4. 点击空白关闭浮层
+        print(f"  [4/4] 关闭浮层...")
         self.page.mouse.click(10, 10)
-        time.sleep(0.8)
-
-        # 验证
-        final_text = self.page.evaluate("""() => {
-            const cascader = document.querySelector('.jx-pro-cascader, .el-cascader, [class*="cascader"]');
-            return cascader?.querySelector('input')?.value || '';
-        }""")
-        if not final_text or 'Noble' not in final_text:
-            # Fallback: JS直接搜并点第一个结果
-            print(f"  [回退] 键盘未生效，改用JS搜索...")
-            self.page.evaluate("""(name) => {
-                // 找级联输入框填入店铺名触发搜索
-                const inp = document.querySelector('.jx-dialog input[placeholder*="搜索"]')
-                    || document.querySelector('[role="dialog"] input[placeholder*="搜索"]')
-                    || document.querySelector('.jx-dialog input');
-                if (inp) {
-                    const ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                    ns.call(inp, name);
-                    inp.dispatchEvent(new Event('input', {bubbles: true}));
-                    inp.dispatchEvent(new Event('change', {bubbles: true}));
-                }
-            }""", shop_name)
-            time.sleep(2)
-            # 点第一个结果
-            self.page.evaluate("""() => {
-                const items = document.querySelectorAll('li, [class*="option"], [class*="item"]');
-                for (const item of items) {
-                    if (item.getBoundingClientRect().height > 10) {
-                        item.click(); return true;
-                    }
-                }
-                return false;
-            }""")
-            time.sleep(0.5)
-            self.page.mouse.click(10, 10)
-            time.sleep(0.5)
-
-        # 验证最终结果
-        final_text = self.page.evaluate("""() => {
-            const cascader = document.querySelector('.jx-pro-cascader, .el-cascader, [class*="cascader"]');
-            return cascader?.querySelector('input')?.value || '';
-        }""")
-        print(f"\n=== 最终选中结果：输入框显示文本 =「{final_text}」 ===")
+        time.sleep(0.5)
     
     def _apply_template(self, template_name: str):
         """引用品类模板"""
