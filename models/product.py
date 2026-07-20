@@ -100,7 +100,7 @@ class Product:
             "single": "单品",
             "2pack": "2件装",
             "3pack": "3件装",
-            "suit": "套装"
+            "suit": "混合套装"
         }
         return mapping.get(self.combo_type, self.main_style.default_sku_class)
     
